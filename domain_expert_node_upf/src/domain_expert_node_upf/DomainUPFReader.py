@@ -1,4 +1,5 @@
 from unified_planning.model import *
+from unified_planning.io import PDDLReader
 from dataclasses import dataclass, field
 from typing import List
 import sys
@@ -9,23 +10,24 @@ import importlib.util
 import unified_planning.model as up_model
 
 @dataclass
-class Domain:
-    domain = Problem()
-    name: str = ""
-    requirements: str = ""
-    types: str = ""
-    constants: str = ""
-    predicates: str = ""
-    functions: str = ""
-    derived_predicates: List[str] = field(default_factory=list)
-    actions: List[str] = field(default_factory=list)
-
 
 class DomainUPFReader:
     def __init__(self):
-        self._domains: List[Domain] = []
+        self.domain = None
+
+    def load_pddl(self, pddl_path):
+        reader = PDDLReader()
+        try:
+            self.domain = reader.parse_problem(pddl_path)
+            return self.domain
+        except Exception as e:
+            print(f"Error al cargar el archivo PDDL: {e}", file=sys.stderr)
+
+
+    def get_name(self):
+        return self.domain.name if self.domain else ""
     
-    def add_domain(self, domain: str):
+    def add_domain(self, domain: Problem):
 
         if not domain:
             print('Empty domain', file=sys.stderr)
@@ -57,46 +59,50 @@ class DomainUPFReader:
         ## parser(?)
         pass
 
-    def get_name(self, domain: str):
-        # match = re.search(r'problem\s*\(\s*["\'](.*?)["\']', domain)
+    # def get_name(self, domain: Problem):
+    #     # match = re.search(r'problem\s*\(\s*["\'](.*?)["\']', domain)
         
-        # if match:
-        #     return match.group(1)
-        # else:
-        #     return ""
-        return domain.name
+    #     # if match:
+    #     #     return match.group(1)
+    #     # else:
+    #     #     return ""
+    #     return domain.name
 
-    def get_requirements(self, domain): # en upf .kind
-        if not domain:
-            return []
+    def get_requirements(self): # en upf .kind
+        # if not domain:
+        #     return []
         
-        return domain.kind
+        return self.domain.kind
 
-    def get_types(self, domain): # usertypes
-        if not domain:
-            return []
+    def get_types(self): # usertypes
+        # if not domain:
+        #     return []
         
-        return domain.user_types
+        return self.domain.user_types
     
     def get_constants(self, domain): # object
         if not domain:
             return []
         
-        return domain.all_objects
+        return self.domain.all_objects
 
-    def get_predicates(self, domain): # Fluent con booltype
-        if not domain:
-            return []
+    def get_predicates(self): # Fluent con booltype
+        # if not domain:
+        #     return []
         
-        return [f for f in domain.fluents if f.type.is_bool_type()]
+        return [f for f in self.domain.fluents if f.type.is_bool_type()]
 
-    def get_functions(self, domain): # fluent con realtype
-        if not domain:
-            return []
+    def get_functions(self): # fluent con realtype
+        # if not domain:
+        #     return []
         
-        return [f for f in domain.fluents if f.type.is_numeric_type()]
+        return [f for f in self.domain.fluents if f.type.is_numeric_type()]
+    
+    def get_domain(self):
+        return str(self.domain) #??
 
-    def get_derived_predicates(self, domain): 
+
+    def get_derived_predicates(self): 
         '''
         reachable = Fluent("reachable", BoolType(), [room_t, room_t])
         x = Variable("x", room_t)

@@ -1,15 +1,17 @@
-from setuptools import setup
+from setuptools import setup, find_packages
 
 package_name = 'domain_expert_node_upf'
 
 setup(
     name=package_name,
     version='0.0.0',
-    packages=['src', package_name],
+    packages=find_packages('src'),
+    package_dir={'': 'src'},
     data_files=[
+        ('share/ament_index/resource_index/packages',
+            ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
         ('share/' + package_name + '/launch', ['launch/launch.py']),
-        ('share/' + package_name + '/resource', ['resource/domain_expert_node_upf']),
     ],
     install_requires=[
         'setuptools',
@@ -22,7 +24,7 @@ setup(
     license='Apache License 2.0',
     entry_points={
         'console_scripts': [
-            'bumpgo = bt_bumpgo.bumpgo:main',
+            'domain_upf_node = domain_expert_node_upf.domain_upf_node:main',
         ],
     },
 )
