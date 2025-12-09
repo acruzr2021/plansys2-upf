@@ -14,7 +14,6 @@ import importlib.util
 import unified_planning.model as up_model
 from collections import defaultdict
 
-
 @dataclass
 
 class DomainUPFReader:
@@ -233,12 +232,10 @@ class DomainUPFReader:
                 print(type(action_obj))
                 action_return.preconditions = preconditions_to_tree(action_obj._preconditions, params_list)   # FNode
                 #eff_tree = effects_to_tree(effects) 
-                
-                #param_expression = ParamExpression()
-                #action_return.preconditions = param_expression.get_tree()
 
                 # effects
-
+                action_return.effects = effects_to_tree(action_obj.effects, params_list)
+                print('sale de los efectos')
                 #action_return
                 return action_return
             
@@ -407,6 +404,7 @@ def _build_tree_node(expr, tree:Tree, params) -> int:
         expr = [expr]
 
     for x in expr:
+        print('\n\n\n--------------------EXPR-------------------')
         print(x)
         print(type(x))
 
@@ -457,14 +455,68 @@ def _build_tree_node(expr, tree:Tree, params) -> int:
             tree.nodes[node.node_id].children.append(cid)
             return node.node_id
 
+        if x.is_le() or x.is_lt() or x.is_equals():
+            node = TreeNode()
+            node.node_id = len(tree.nodes)
+            node.node_type = TreeNode.EXPRESSION
+            
+            if x.is_le(): node.expression_type = TreeNode.COMP_LE
+            elif x.is_lt(): node.expression_type = TreeNode.COMP_LT
+            elif x.is_equals(): node.expression_type = TreeNode.COMP_EQ
+            
+            node.children = []
+            tree.nodes.append(node)
+            for a in x.args:
+                cid = _build_tree_node(a, tree, params)
+                tree.nodes[node.node_id].children.append(cid)
+            return node.node_id
+            
+        if x.is_div() or x.is_times() or x.is_plus() or x.is_minus():
+            print("----------ENTRA DOT----------")
+            node = TreeNode()
+            node.node_id = len(tree.nodes)
+            node.node_type = TreeNode.EXPRESSION
+            if x.is_div(): node.expression_type = TreeNode.DIV
+            elif x.is_times(): node.expression_type = TreeNode.MULT
+            elif x.is_plus(): node.expression_type = TreeNode.ADD
+            elif x.is_minus(): node.expression_type = TreeNode.SUB
+            
+            tree.nodes.append(node)
+            node.children = []
+            for a in x.args:
+                cid = _build_tree_node(a, tree, params)
+                tree.nodes[node.node_id].children.append(cid)
+            return node.node_id
+
+        if x.is_int_constant() or x.is_real_constant():
+            print("-------------entra number-------------")
+            node = TreeNode()
+            node.node_id = len(tree.nodes)
+            node.node_type = TreeNode.NUMBER
+
+            if x.is_int_constant():
+                node.value = float(x.int_constant_value())
+            else:
+                node.value = float(x.real_constant_value())
+
+            tree.nodes.append(node)
+            return node.node_id
+
         if type(x) == FNode:
             print(x)
             fluent_name = str(x).split("(")[0]
             print(fluent_name)
 
             node = TreeNode()
+
+            if x.type.is_bool_type():
+                print('entra predicate')
+                node.node_type = TreeNode.PREDICATE
+            else:
+                print('entra function')
+                node.node_type = TreeNode.FUNCTION
+
             node.node_id = len(tree.nodes)
-            node.node_type = NodeType.PREDICATE
             node.expression_type = 0
             node.modifier_type = 0
             node.name = fluent_name
@@ -474,8 +526,6 @@ def _build_tree_node(expr, tree:Tree, params) -> int:
                 param = Param()
                 print(a)
                 print(params)
-                if str(a) in params:
-                    print('está')
                 index = next((i for i, item in enumerate(params) if item == str(a)), -1)
                 param.name = "?" + f'{index}'
                 param.type = str(a.type)
@@ -492,27 +542,130 @@ def preconditions_to_tree(expr, params) -> Tree:
     _build_tree_node(expr, tree, params)   # genera nodos y pone root
     return tree
 
-def effects_to_tree(effects) -> Tree:
+# def effects_to_tree(effects, params) -> Tree:
+#     tree = Tree()
+    
+
+#     print(effects)
+#     print(type(effects))
+#     #print(vars(effects))
+
+#     and_node = TreeNode()
+#     and_node.node_id = len(tree.nodes)
+#     and_node.node_type = TreeNode.AND
+#     and_node.name = ""
+#     and_node.parameters = []
+#     and_node.value = 0.0
+#     and_node.negate = False
+#     and_node.children = []
+#     tree.nodes.append(and_node)
+
+#     for eff in effects:
+#         print(eff)
+#         print(type(eff))
+#         print(vars(eff))
+#         print(eff._fluent)
+#         print("\n\n\n")
+
+#         if eff._value.is_false():
+#             print('falso')
+#             node = TreeNode()
+#             node.node_id = len(tree.nodes)
+#             node.node_type = TreeNode.NOT
+#             node.name = ""
+#             node.parameters = []
+#             node.value = 0.0
+#             node.negate = False
+#             node.children = []
+#             tree.nodes.append(node)
+#             tree.nodes[and_node.node_id].children.append(node.node_id)
+
+
+#             child_node = TreeNode()
+#             child_node.node_id = len(tree.nodes)
+#             child_node.node_type = TreeNode.PREDICATE
+#             child_node.name = str(eff._fluent)
+#             child_node.value = 0.0
+#             child_node.negate = False
+#             child_node.parameters = []
+#             for a in eff._fluent.args:
+#                 param = Param()
+#                 index = next((i for i, item in enumerate(params) if item == str(a)), -1)
+#                 param.name = "?" + f'{index}'
+#                 param.type = str(a.type)
+#                 param.sub_types = []
+#                 child_node.parameters.append(param)
+#             tree.nodes.append(child_node)
+#             tree.nodes[node.node_id].children.append(child_node.node_id)
+#             continue
+
+#         else:
+#             print(eff._value)
+#             print('verdadero')
+#             child_node = TreeNode()
+#             child_node.node_id = len(tree.nodes)
+#             child_node.node_type = TreeNode.PREDICATE
+#             child_node.name = str(eff._fluent)
+#             child_node.value = 0.0
+#             child_node.negate = False
+#             child_node.parameters = []
+#             for a in eff._fluent.args:
+#                 param = Param()
+#                 index = next((i for i, item in enumerate(params) if item == str(a)), -1)
+#                 param.name = "?" + f'{index}'
+#                 print(a.type)
+#                 param.type = str(a.type)
+#                 param.sub_types = []
+#                 child_node.parameters.append(param)
+#             tree.nodes.append(child_node)
+#             tree.nodes[and_node.node_id].children.append(child_node.node_id)
+
+#     return tree
+
+def make_node(node_type, name="", value=0.0, negate=False, parameters=None):
+    node = TreeNode()
+    node.node_id = len(tree.nodes)
+    node.node_type = node_type
+    node.name = name
+    node.value = value
+    node.negate = negate
+    node.parameters = parameters or []
+    node.children = []
+    tree.nodes.append(node)
+    return node
+
+def make_predicate_node(fluent, params):
+    parameters = []
+    for a in fluent.args:
+        index = next((i for i, item in enumerate(params) if item == str(a)), -1)
+        param = Param()
+        param.name = f"?{index}"
+        param.type = str(a.type)
+        param.sub_types = []
+        parameters.append(param)
+    return make_node(TreeNode.PREDICATE, name=str(fluent), parameters=parameters)
+
+def effects_to_tree(effects, params) -> Tree:
+    global tree
     tree = Tree()
+
+    and_node = make_node(TreeNode.AND)
+    print(effects)
     
     for eff in effects:
-        node_eff = TreeNode()
-        node_eff.node_id = len(tree.nodes)
-        node_eff.node_type = TreeNode.ASSIGN
-        #node_eff.name = eff.fluent.function.name
-        node_eff.parameters = [str(a) for a in eff.fluent.args]
-        tree.nodes.append(node_eff)
+        print(eff)
+        print(type(eff))
+        if eff.value.is_false():
+            not_node = make_node(TreeNode.NOT)
+            and_node.children.append(not_node.node_id)
 
-        # valor de asignación → segundo nodo y link
-        node_val = TreeNode()
-        node_val.node_id = len(tree.nodes)
-        node_val.node_type = TreeNode.VALUE
-        node_val.value = str(eff.value)   # "true" / "false" / número
-        tree.nodes.append(node_val)
+            child_node = make_predicate_node(eff.fluent, params)
+            not_node.children.append(child_node.node_id)
+        
+        else:
+            child_node = make_predicate_node(eff.fluent, params)
+            and_node.children.append(child_node.node_id)
 
-        tree.nodes[node_eff.node_id].children.append(node_val.node_id)
-
-    tree.root = 0
     return tree
 
 
