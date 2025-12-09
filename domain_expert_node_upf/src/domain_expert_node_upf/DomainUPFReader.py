@@ -157,9 +157,7 @@ class DomainUPFReader:
 
 
     def get_action(self, action_name, params):
-        # actions = self.get_actions()
-
-        # for action in actions:
+        
         for action_obj in self.domain.actions:
             action = str(action_obj)
             
@@ -177,7 +175,7 @@ class DomainUPFReader:
                 self.logger.warn(f"params_action: {len(params_action)}")
 
                 continue
-
+            
             if params:
                 params_action_name = [re.split(r"\s+", param_a)[1] for param_a in params_action]    
                 self.logger.info(f"params_action_name: {params_action_name}")
@@ -188,7 +186,8 @@ class DomainUPFReader:
                         return
 
             same_params = True
-            
+            params_list = []
+
             for param in params:
                 self.logger.info(f"param: {param}")
 
@@ -210,8 +209,11 @@ class DomainUPFReader:
                     param_list = re.split(r"\s+", param)
                     self.logger.info(f"param_list: {param_list}")
 
+                    print('added to the list: ', param_list[1])
+                    params_list.append(param_list[1])
+
                     param_return = Param()
-                    param_return.name = str(param_list[1])
+                    param_return.name = "?" + f'{len(params_list) - 1}'
                     param_return.type = str(param_list[0])
 
                     upf_type = self.get_type_by_name(param_list[0])
@@ -226,16 +228,11 @@ class DomainUPFReader:
 
                     action_return.parameters.append(param_return)
 
-                # preconditions
-                #action_return.preconditions = 
-
-                #action_object = a for a in self.domain.actions if str(a) == action
                 print(action_obj)
 
                 print(type(action_obj))
-                #print(upf_fnode_to_tree(action_obj._preconditions))
-                action_return.preconditions = upf_fnode_to_tree(action_obj._preconditions)   # FNode
-                #eff_tree = upf_effects_to_tree(effects) 
+                action_return.preconditions = preconditions_to_tree(action_obj._preconditions, params_list)   # FNode
+                #eff_tree = effects_to_tree(effects) 
                 
                 #param_expression = ParamExpression()
                 #action_return.preconditions = param_expression.get_tree()
@@ -246,60 +243,6 @@ class DomainUPFReader:
                 return action_return
             
         return None
-    # def get_action(self, action_name, params):
-    #     actions = self.get_actions()
-
-    #     for action in actions:
-            
-    #         name = action.split("(")[0].split(" ")[-1]
-    #         params_action = re.split(r"\s*,\s*", action.split("(")[1].split(")")[0]) # revisar si eso es lo que quiero
-    #         self.logger.warn(f"name: i{name}i")
-            
-    #         if name != action_name:
-    #             self.logger.warn(f"name: i{name}i != action_name: i{action_name}i")
-    #             continue
-            
-    #         same_params = True
-
-    #         if params and (len(params) != len(params_action)):
-    #             self.logger.info(f"params: {len(params)}")
-    #             self.logger.warn(f"params_action: {len(params_action)}")
-
-    #             continue
-            
-    #         for param in params:
-    #             self.logger.info(f"param: {param}")
-
-    #             if param not in params_action:
-    #                 self.logger.warn(f"param: i{param}i not in params_action: {params_action}")
-    #                 same_params = False
-    #                 break
-            
-    #         if same_params:
-    #             self.logger.info(f"action: {action}")
-    #             action_return = Action()
-    #             action_return.name = name
-                
-    #             for param in params:
-    #                 param_return = Param()
-    #                 param_list = re.split(r"\s+", param)
-    #                 param_return.name = param_list[1]
-    #                 param_return.type = param_list[0]
-    #                 action_return.parameters.append(param_return)
-
-
-    #                 # subtypes????
-
-    #             # preconditions
-    #             param_expression = ParamExpression()
-    #             action_return.preconditions = param_expression.get_tree()
-
-    #             # effects
-
-    #             action_return
-    #             return action
-            
-    #     return None
 
     def get_durative_actions(self):
         actions = [
@@ -435,7 +378,7 @@ class NodeType:
 
 
 
-def _build_tree_node(expr, tree:Tree) -> int:
+def _build_tree_node(expr, tree:Tree, params) -> int:
     """Crea nodos Tree.Node recursivamente igual que get_tree de C++, 
     pero en una sola función y para UPF."""
 
@@ -482,7 +425,7 @@ def _build_tree_node(expr, tree:Tree) -> int:
             tree.nodes.append(node)
 
             for arg in x.args:
-                cid =_build_tree_node(arg, tree)
+                cid =_build_tree_node(arg, tree, params)
                 tree.nodes[node.node_id].children.append(cid)
             
             return node.node_id
@@ -500,7 +443,7 @@ def _build_tree_node(expr, tree:Tree) -> int:
             node.children = []
             tree.nodes.append(node)
             for arg in x.args:
-                cid = _build_tree_node(arg, tree)
+                cid = _build_tree_node(arg, tree, params)
                 tree.nodes[node.node_id].children.append(cid)
             return node.node_id
 
@@ -510,36 +453,15 @@ def _build_tree_node(expr, tree:Tree) -> int:
             node.node_type = NodeType.NOT
             node.children = []
             tree.nodes.append(node)
-            cid = _build_tree_node(x.arg(0), tree)
+            cid = _build_tree_node(x.arg(0), tree, params)
             tree.nodes[node.node_id].children.append(cid)
             return node.node_id
 
-        # ---------- Predicados / fluents ----------
         if type(x) == FNode:
             print(x)
-            # print(vars(x))
-            # print(dir(x))
             fluent_name = str(x).split("(")[0]
             print(fluent_name)
 
-            # for attr in attrs:
-            #     try: 
-            #         if hasattr(x, attr):
-            #             value = getattr(x, attr)
-            #             # Si es método, lo llamamos sin argumentos (si se puede)
-            #             if callable(value):
-            #                 try:
-            #                     result = value()
-            #                 except TypeError:
-            #                     result = "<método requiere argumentos>"
-            #             else:
-            #                 result = value
-            #             print(f"{attr}: {result}")
-            #         else:
-            #             print(f"{attr}: <no existe en x>")
-            #     except:
-            #         print(attr, 'no gusta parece')
-            #         continue
             node = TreeNode()
             node.node_id = len(tree.nodes)
             node.node_type = NodeType.PREDICATE
@@ -550,7 +472,12 @@ def _build_tree_node(expr, tree:Tree) -> int:
             node.parameters = []
             for a in x.args:
                 param = Param()
-                param.name = str(a)
+                print(a)
+                print(params)
+                if str(a) in params:
+                    print('está')
+                index = next((i for i, item in enumerate(params) if item == str(a)), -1)
+                param.name = "?" + f'{index}'
                 param.type = str(a.type)
                 param.sub_types = []
                 node.parameters.append(param)
@@ -560,12 +487,12 @@ def _build_tree_node(expr, tree:Tree) -> int:
 
     raise NotImplementedError(f"No está implementado este tipo de nodo UPF: {expr}")
 
-def upf_fnode_to_tree(expr) -> Tree:
+def preconditions_to_tree(expr, params) -> Tree:
     tree = Tree()
-    _build_tree_node(expr, tree)   # genera nodos y pone root
+    _build_tree_node(expr, tree, params)   # genera nodos y pone root
     return tree
 
-def upf_effects_to_tree(effects) -> Tree:
+def effects_to_tree(effects) -> Tree:
     tree = Tree()
     
     for eff in effects:

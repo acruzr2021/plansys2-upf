@@ -18,6 +18,7 @@ from plansys2_msgs.srv import (
     GetDomain,
     ValidateDomain
 )
+import sys
 
 # class DomainUPFExpertNode(LifecycleNode):
 #     def __init__(self):
@@ -49,17 +50,18 @@ from plansys2_msgs.srv import (
 #         # Planning
 #         self.popf_plan_solver_ = POPFPlanSolver() 
 
-
 def main(args =None):
     rclpy.init(args = args)
     node = DomainUPFExpertNode()
+
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
-        pass
+        print('Ctrl+C detected')
     finally:
         node.destroy_node()
-        rclpy.shutdown()
+        if rclpy.ok():
+            rclpy.shutdown()
 
 if __name__ == '__main__':
     main()
