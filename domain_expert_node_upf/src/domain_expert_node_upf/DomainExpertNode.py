@@ -16,7 +16,6 @@ from plansys2_msgs.srv import (
     GetDomainActionDetails,
     GetDomainDurativeActionDetails,
     GetDomainDerivedPredicateDetails,
-    #GetDomainDurativeActions, # revisar
     GetStates,
     GetNodeDetails,
     GetDomain,
@@ -68,12 +67,12 @@ class DomainUPFExpertNode(LifecycleNode):
             callback_group=self.validate_domain_callback_group
         )
 
-        # self.get_domain_durative_actions_service = self.create_service(
-        #     GetDomainDurativeActions,
-        #     'domain_expert/get_domain_durative_actions',
-        #     self.get_domain_durative_actions_service_callback,
-        #     callback_group=self.validate_domain_callback_group
-        # )
+        self.get_domain_durative_actions_service = self.create_service(
+            GetDomainActions,
+            'domain_expert/get_domain_durative_actions',
+            self.get_domain_durative_actions_service_callback,
+            callback_group=self.validate_domain_callback_group
+        )
 
         self.get_domain_durative_action_details_service = self.create_service(
             GetDomainDurativeActionDetails,
@@ -260,7 +259,7 @@ class DomainUPFExpertNode(LifecycleNode):
         
         else:
             response.success = True
-            response.actions = self.domain_upf.get_domain_actions()
+            response.actions = self.domain_upf.get_durative_actions()
         return response
 
     def get_domain_durative_action_details_service_callback(self, request, response):
@@ -270,40 +269,41 @@ class DomainUPFExpertNode(LifecycleNode):
             self.get_logger().warn(response.error_info)
         
         else:
-            action = self.domain_upf.getDurativeAction(request.durative_action, request.parameters)
+            action = self.domain_upf.get_durative_action(request.durative_action, request.parameters)
 
             if action:
                 response.durative_action = action
                 response.success = True
             else:
-                self.get_logger().warn(f"Requesting a non-existing action [{request.action}]")
+                self.get_logger().warn(f"Requesting a non-existing action [{request.durative_action}]")
                 response.success = False
                 response.error_info = "Durative action not found"
+            return response
 
     def get_domain_predicates_service_callback(self, request, response):
-        if self.domain_expert is None:
+        if self.domain_upf is None:
             response.success = False
             response.error_info = "Requesting service in non-active state"
             self.get_logger().warn(response.error_info)
 
         else:
             response.success = True
-            predicates = self.domain_expert_.get_predicates()
-            response.states = [self._convert_predicate_to_node(p) for p in predicates]
+            predicates = self.domain_upf.get_predicates()
+            response.states = predicates
         
         return response
 
     def get_domain_predicate_details_service_callback(self, request, response):
-        if self.domain_expert is None:
+        if self.domain_upf is None:
             response.success = False
             response.error_info = "Requesting service in non-active state"
             self.get_logger().warn(response.error_info)
 
         else:
-            predicate = self.domain_expert.getPredicate(request.expression)
+            predicate = self.domain_upf.get_predicate(request.expression)
             
             if predicate:
-                response.node = predicate.value() ##??
+                response.node = predicate
                 response.success = True
             else:
                 self.get_logger(f"Requesting a non-existing predicate [{str(request.expression)}]")
@@ -312,29 +312,29 @@ class DomainUPFExpertNode(LifecycleNode):
         return response
 
     def get_domain_functions_service_callback(self, request, response):
-        if self.domain_expert is None:
+        if self.domain_upf is None:
             response.success = False
             response.error_info = "Requesting service in non-active state"
             self.get_logger().warn(response.error_info)
 
         else:
             response.success = True
-            functions = self.domain_expert_.get_predicates()
-            response.states = [self._convert_function_to_node(f) for f in functions] #??
+            functions = self.domain_upf.get_functions()
+            response.states = functions
 
         return response
 
     def get_domain_function_details_service_callback(self, request, response):
-        if self.domain_expert is None:
+        if self.domain_upf is None:
             response.success = False
             response.error_info = "Requesting service in non-active state"
             self.get_logger().warn(response.error_info)
 
         else:
-            function = self.domain_expert.getFunction(request.expression)
+            function = self.domain_upf.get_function(request.expression)
 
             if function:
-                response.node = function.value()
+                response.node = function
                 response.success = True
             else: 
                 self.get_logger(f"Requesting a non-existing function [{str(request.expression)}]")

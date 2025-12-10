@@ -1,7 +1,7 @@
 from unified_planning.model import *
 from unified_planning.io import PDDLReader
 from dataclasses import dataclass, field
-from plansys2_msgs.msg import Action, Param, Tree
+from plansys2_msgs.msg import Action, Param, Tree, DurativeAction
 from plansys2_msgs.msg import Node as TreeNode
 from rclpy.node import Node
 import re
@@ -13,6 +13,8 @@ import inspect
 import importlib.util
 import unified_planning.model as up_model
 from collections import defaultdict
+from unified_planning.model.timing import StartTiming, EndTiming, ClosedTimeInterval
+
 
 @dataclass
 
@@ -100,20 +102,68 @@ class DomainUPFReader:
         return self.domain.all_objects
 
     def get_predicates(self): # Fluent con booltype
-        # if not domain:
-        #     return []
-        
-        return [f for f in self.domain.fluents if f.type.is_bool_type()]
+        nodes = []
+        for fluent in self.domain.fluents:
+            if fluent.type.is_bool_type():
+                node = TreeNode()
+                node.node_type = TreeNode.PREDICATE
+                node.name = str(fluent._name)
+                nodes.append(node)
+
+        return nodes
 
     def get_functions(self): # fluent con realtype
-        # if not domain:
-        #     return []
-        
-        return [f for f in self.domain.fluents if f.type.is_numeric_type()]
-    
-    def get_domain(self):
-        return str(self.domain) #??
+        nodes =  []
+        for fluent in self.domain.fluents:
+            if not fluent.type.is_bool_type():
+                node = TreeNode()
+                node.node_type = TreeNode.FUNCTION
+                node.name = str(fluent._name)
+                nodes.append(node)
 
+        return nodes
+    
+    def get_predicate(self, name):
+
+        for predicate in self.domain.fluents:
+            if predicate._name == name:
+                node = TreeNode()
+                node.node_type = TreeNode.PREDICATE
+                node.name = str(predicate._name)
+                node.parameters = []
+                print(vars(predicate))
+                for arg in predicate._signature:
+                    param = Param()
+                    param.name = "?" + f'{len(node.parameters)}'
+                    param.type = str(arg).split(" ")[0]
+                    param.sub_types = []
+                    node.parameters.append(param)
+
+                return node
+            
+        return None
+          
+    def get_function(self, name):
+        for predicate in self.domain.fluents:
+            if predicate._name == name:
+                node = TreeNode()
+                node.node_type = TreeNode.FUNCTION
+                node.name = str(predicate._name)
+                node.parameters = []
+                print(vars(predicate))
+                for arg in predicate._signature:
+                    param = Param()
+                    param.name = "?" + f'{len(node.parameters)}'
+                    param.type = str(arg).split(" ")[0]
+                    param.sub_types = []
+                    node.parameters.append(param)
+
+                return node
+            
+        return None
+      
+    def get_domain(self):
+        return str(self.domain)
 
     def get_derived_predicates(self): 
         '''
@@ -234,6 +284,7 @@ class DomainUPFReader:
                 #eff_tree = effects_to_tree(effects) 
 
                 # effects
+                print('\n\n\n--------------------EFFECTS-------------------\n\n\n')
                 action_return.effects = effects_to_tree(action_obj.effects, params_list)
                 print('sale de los efectos')
                 #action_return
@@ -252,7 +303,121 @@ class DomainUPFReader:
 
         return actions
 
-    def get_durative_action(self):
+    def get_durative_action(self, action_name, params):
+
+        self.logger.info(f'action name: {action_name}')
+
+        self.logger.info(f"{self.domain.actions}")
+
+        for action_obj in self.domain.actions:
+
+            # if not isinstance(action_obj, (DurativeAction)):
+            #     continue
+            action = str(action_obj)
+
+            self.logger.info(f'vars(action_obj)')
+            
+            name = action.split("(")[0].split(" ")[-1]
+            params_action = re.split(r"\s*,\s*", action.split("(")[1].split(")")[0])
+            self.logger.warn(f"name: i{name}i")
+
+
+            if name != action_name:
+                self.logger.warn(f"name: i{name}i != action_name: i{action_name}i")
+                continue
+            
+            if params and (len(params) != len(params_action)):
+                self.logger.info(f"params: {len(params)}")
+                self.logger.warn(f"params_action: {len(params_action)}")
+
+                continue
+            
+            self.logger.info("llega")
+
+            if params:
+                params_action_name = [re.split(r"\s+", param_a)[1] for param_a in params_action]    
+                self.logger.info(f"params_action_name: {params_action_name}")
+
+                for param in params:
+                    if param not in params_action_name:
+                        self.logger.warn(f"param: i{param}i not in params_action: {params_action_name}")
+                        return
+
+            self.logger.info(f"params: {params}")
+            
+            same_params = True
+            params_list = []
+
+            for param in params:
+                self.logger.info(f"param: {param}")
+
+                if param not in params_action:
+                    self.logger.warn(f"param: i{param}i not in params_action: {params_action}")
+                    same_params = False
+                    break
+
+            self.logger.info(f"same_params: {same_params}")
+
+            if same_params:
+                self.logger.info(f"action: {action}")
+                self.logger.info(f"name: {name}")
+                action_return = DurativeAction()
+                self.logger.info(f"action_return:")
+                action_return.name = name
+                action_return.parameters = []
+                self.logger.info(f"action_return:")
+                
+                for param in params_action:
+                    param_list = re.split(r"\s+", param)
+                    self.logger.info(f"param_list: {param_list}")
+
+                    print('added to the list: ', param_list[1])
+                    params_list.append(param_list[1])
+
+                    param_return = Param()
+                    param_return.name = "?" + f'{len(params_list) - 1}'
+                    param_return.type = str(param_list[0])
+
+                    upf_type = self.get_type_by_name(param_list[0])
+                    print(upf_type)
+                    
+                    if upf_type is None:
+                        param_return.sub_types = []
+                    else:
+                        param_return.sub_types = [child.name for child in self.get_children(upf_type.name)]
+
+                        self.logger.info(f"param_return children: {param_return.sub_types}")
+
+                    action_return.parameters.append(param_return)
+
+                print(action_obj)
+
+                self.logger.info(f"action_obj:")
+                self.logger.info(f'{type(action_obj)}')
+                self.logger.info(f'{vars(action_obj)}')
+
+                self.logger.info(f'{action_obj.conditions}')
+                self.logger.info(f'{type(action_obj.conditions)}')
+                #self.logger.info(f'{vars(action_obj.conditions)}')
+
+                if '[start]' in action_obj.conditions:
+                    print('entra en el if 1')
+                    print(">>> AT START")
+                    action_return.at_start_requierements = preconditions_to_tree(action_obj.conditions['[start]'], params_list)
+
+                # OVER ALL (start,end)
+                elif ('start', 'end') in action_obj.conditions:
+                    print('entra en el if 2')
+                    print(">>> OVER ALL")
+                    action_return.over_all_requierements = preconditions_to_tree(action_obj.conditions[('start', 'end')], params_list)
+
+                # AT END
+                elif '[end]' in action_obj.conditions:
+                    print(">>> AT END")
+                    action_return.at_end_requierements = preconditions_to_tree(action_obj.conditions['[end]'], params_list)
+
+                return action_return
+        
         pass
 
     def _execute_upf_problem(self, module_path):
@@ -302,19 +467,6 @@ class DomainUPFReader:
         
         return found_problems[0]
     
-# class ParamExpression():
-
-    # NODE_TYPES = {
-    #     "and": Node.AND,
-    #     "or": Node.OR,
-    #     "not": Node.NOT,
-    #     "predicate": Node.PREDICATE,
-    #     "function": Node.FUNCTION,
-    #     "equals": Node.EQUALS,
-    # }
-
-    # def __init__():
-    #     pass
     def get_tree(self, action_string):
         tree = Tree()
 
@@ -476,10 +628,10 @@ def _build_tree_node(expr, tree:Tree, params) -> int:
             node = TreeNode()
             node.node_id = len(tree.nodes)
             node.node_type = TreeNode.EXPRESSION
-            if x.is_div(): node.expression_type = TreeNode.DIV
-            elif x.is_times(): node.expression_type = TreeNode.MULT
-            elif x.is_plus(): node.expression_type = TreeNode.ADD
-            elif x.is_minus(): node.expression_type = TreeNode.SUB
+            if x.is_div(): node.expression_type = TreeNode.ARITH_DIV
+            elif x.is_times(): node.expression_type = TreeNode.ARITH_MULT
+            elif x.is_plus(): node.expression_type = TreeNode.ARITH_ADD
+            elif x.is_minus(): node.expression_type = TreeNode.ARITH_SUB
             
             tree.nodes.append(node)
             node.children = []
@@ -542,93 +694,15 @@ def preconditions_to_tree(expr, params) -> Tree:
     _build_tree_node(expr, tree, params)   # genera nodos y pone root
     return tree
 
-# def effects_to_tree(effects, params) -> Tree:
-#     tree = Tree()
-    
-
-#     print(effects)
-#     print(type(effects))
-#     #print(vars(effects))
-
-#     and_node = TreeNode()
-#     and_node.node_id = len(tree.nodes)
-#     and_node.node_type = TreeNode.AND
-#     and_node.name = ""
-#     and_node.parameters = []
-#     and_node.value = 0.0
-#     and_node.negate = False
-#     and_node.children = []
-#     tree.nodes.append(and_node)
-
-#     for eff in effects:
-#         print(eff)
-#         print(type(eff))
-#         print(vars(eff))
-#         print(eff._fluent)
-#         print("\n\n\n")
-
-#         if eff._value.is_false():
-#             print('falso')
-#             node = TreeNode()
-#             node.node_id = len(tree.nodes)
-#             node.node_type = TreeNode.NOT
-#             node.name = ""
-#             node.parameters = []
-#             node.value = 0.0
-#             node.negate = False
-#             node.children = []
-#             tree.nodes.append(node)
-#             tree.nodes[and_node.node_id].children.append(node.node_id)
-
-
-#             child_node = TreeNode()
-#             child_node.node_id = len(tree.nodes)
-#             child_node.node_type = TreeNode.PREDICATE
-#             child_node.name = str(eff._fluent)
-#             child_node.value = 0.0
-#             child_node.negate = False
-#             child_node.parameters = []
-#             for a in eff._fluent.args:
-#                 param = Param()
-#                 index = next((i for i, item in enumerate(params) if item == str(a)), -1)
-#                 param.name = "?" + f'{index}'
-#                 param.type = str(a.type)
-#                 param.sub_types = []
-#                 child_node.parameters.append(param)
-#             tree.nodes.append(child_node)
-#             tree.nodes[node.node_id].children.append(child_node.node_id)
-#             continue
-
-#         else:
-#             print(eff._value)
-#             print('verdadero')
-#             child_node = TreeNode()
-#             child_node.node_id = len(tree.nodes)
-#             child_node.node_type = TreeNode.PREDICATE
-#             child_node.name = str(eff._fluent)
-#             child_node.value = 0.0
-#             child_node.negate = False
-#             child_node.parameters = []
-#             for a in eff._fluent.args:
-#                 param = Param()
-#                 index = next((i for i, item in enumerate(params) if item == str(a)), -1)
-#                 param.name = "?" + f'{index}'
-#                 print(a.type)
-#                 param.type = str(a.type)
-#                 param.sub_types = []
-#                 child_node.parameters.append(param)
-#             tree.nodes.append(child_node)
-#             tree.nodes[and_node.node_id].children.append(child_node.node_id)
-
-#     return tree
-
-def make_node(node_type, name="", value=0.0, negate=False, parameters=None):
+def make_node(node_type, name="", value=0.0, negate=False, parameters=None, expression_type=0, modifier_type=0):
     node = TreeNode()
     node.node_id = len(tree.nodes)
     node.node_type = node_type
-    node.name = name
+    node.name = str(name).split("(")[0]
     node.value = value
     node.negate = negate
+    node.expression_type = expression_type
+    node.modifier_type = modifier_type
     node.parameters = parameters or []
     node.children = []
     tree.nodes.append(node)
@@ -651,10 +725,12 @@ def effects_to_tree(effects, params) -> Tree:
 
     and_node = make_node(TreeNode.AND)
     print(effects)
-    
+
     for eff in effects:
         print(eff)
         print(type(eff))
+        print(vars(eff))
+
         if eff.value.is_false():
             not_node = make_node(TreeNode.NOT)
             and_node.children.append(not_node.node_id)
@@ -662,9 +738,33 @@ def effects_to_tree(effects, params) -> Tree:
             child_node = make_predicate_node(eff.fluent, params)
             not_node.children.append(child_node.node_id)
         
-        else:
+        elif eff.value.is_true():
             child_node = make_predicate_node(eff.fluent, params)
             and_node.children.append(child_node.node_id)
+
+        elif eff._kind == EffectKind.INCREASE or eff._kind == EffectKind.DECREASE or eff._kind == EffectKind.ASSIGN:
+            
+            print("entra modificadores")
+            if eff._kind == EffectKind.INCREASE:
+                node = make_node(TreeNode.FUNCTION_MODIFIER, modifier_type=TreeNode.INCREASE)
+            elif eff._kind == EffectKind.DECREASE:
+                node = make_node(TreeNode.FUNCTION_MODIFIER, modifier_type=TreeNode.DECREASE)
+            elif eff._kind == EffectKind.ASSIGN:
+                node = make_node(TreeNode.FUNCTION_MODIFIER, modifier_type=TreeNode.ASSIGN)
+
+            and_node.children.append(node.node_id)
+
+            id = _build_tree_node(eff._fluent, tree, params)
+            
+            node.children.append(id)
+
+            id = _build_tree_node(eff._value, tree, params)
+
+            node.children.append(id)
+
+            print(type(eff._value))
+
+            
 
     return tree
 
