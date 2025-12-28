@@ -13,6 +13,15 @@ import inspect
 import importlib.util
 import unified_planning.model as up_model
 from collections import defaultdict
+
+from unified_planning.model.timing import (
+    TimeInterval,
+    TimePointInterval,
+    OpenTimeInterval,
+    StartTiming,
+    EndTiming,
+)
+
 from unified_planning.model.timing import StartTiming, EndTiming, ClosedTimeInterval
 
 
@@ -400,21 +409,38 @@ class DomainUPFReader:
                 self.logger.info(f'{type(action_obj.conditions)}')
                 #self.logger.info(f'{vars(action_obj.conditions)}')
 
-                if '[start]' in action_obj.conditions:
-                    print('entra en el if 1')
-                    print(">>> AT START")
-                    action_return.at_start_requierements = preconditions_to_tree(action_obj.conditions['[start]'], params_list)
+                print("TimePointInterval =", TimePointInterval)
+                print("type(TimePointInterval) =", type(TimePointInterval))
 
-                # OVER ALL (start,end)
-                elif ('start', 'end') in action_obj.conditions:
-                    print('entra en el if 2')
-                    print(">>> OVER ALL")
-                    action_return.over_all_requierements = preconditions_to_tree(action_obj.conditions[('start', 'end')], params_list)
 
-                # AT END
-                elif '[end]' in action_obj.conditions:
-                    print(">>> AT END")
-                    action_return.at_end_requierements = preconditions_to_tree(action_obj.conditions['[end]'], params_list)
+                START = type(StartTiming())
+                END = type(EndTiming())
+
+                for interval, conds in action_obj._conditions.items():
+
+                    lower = interval.lower
+                    upper = interval.upper
+
+                    print(lower)
+                    print(upper)
+                    print(str(lower), str(upper))
+                    initial_time = str(interval.lower)
+                    final_time = str(interval.upper) 
+                    print(conds)
+
+                    if initial_time == final_time and initial_time == 'start':
+                        print('entra en el if 1')
+                        print(">>> AT START")
+                        action_return.at_start_requirements = preconditions_to_tree(conds, params_list)
+
+                    elif initial_time == 'start' and final_time == 'end':
+                        print('entra en el if 2')
+                        print(">>> OVER ALL")
+                        action_return.over_all_requirements = preconditions_to_tree(conds, params_list)
+
+                    elif initial_time == 'end':
+                        print(">>> AT END")
+                        action_return.at_end_requirements = preconditions_to_tree(conds, params_list)
 
                 return action_return
         
@@ -552,16 +578,43 @@ def _build_tree_node(expr, tree:Tree, params) -> int:
     print(type(expr))
     print(expr)
 
-    if not isinstance(expr, list):
-        expr = [expr]
+    if tree.nodes is None or len(tree.nodes) == 0:
+        print('-----------------------AND EXPR-----------------------')
+        node = TreeNode()
+        node.node_id = len(tree.nodes)
+        node.node_type = NodeType.AND
+        node.expression_type = 0
+        node.modifier_type = 0
+        node.name = ''
+        node.parameters = []
+        node.value = 0.0
+        node.negate = False
+        node.children = []
+        tree.nodes.append(node)
 
-    for x in expr:
-        print('\n\n\n--------------------EXPR-------------------')
-        print(x)
-        print(type(x))
+        if not isinstance(expr, list):
+            print('is not a list instance')
+            expr = [expr]
+
+        for arg in expr:
+            cid =_build_tree_node(arg, tree, params)
+            if cid == 0:
+                continue
+            
+            tree.nodes[node.node_id].children.append(cid)
+        
+        return node.node_id
 
 
-        if x.is_and():
+    
+    print('\n\n\n--------------------EXPR-------------------')
+    print(expr)
+    print(type(expr))
+
+
+    if expr.is_and():
+        if len(tree.nodes) != 1:
+            print('entra and, len != 1')
             node = TreeNode()
             node.node_id = len(tree.nodes)
             node.node_type = NodeType.AND
@@ -573,119 +626,123 @@ def _build_tree_node(expr, tree:Tree, params) -> int:
             node.negate = False
             node.children = []
             tree.nodes.append(node)
+        else:
+            print('entra and, len == 1')
+            node = tree.nodes[0]
 
-            for arg in x.args:
-                cid =_build_tree_node(arg, tree, params)
-                tree.nodes[node.node_id].children.append(cid)
-            
-            return node.node_id
-
-        if x.is_or():
-            node = TreeNode()
-            node.node_id = len(tree.nodes)
-            node.node_type = NodeType.OR
-            node.expression_type = 0
-            node.modifier_type = 0
-            node.name = ''
-            node.parameters = []
-            node.value = 0.0
-            node.negate = False
-            node.children = []
-            tree.nodes.append(node)
-            for arg in x.args:
-                cid = _build_tree_node(arg, tree, params)
-                tree.nodes[node.node_id].children.append(cid)
-            return node.node_id
-
-        if x.is_not():
-            node = TreeNode()
-            node.node_id = len(tree.nodes)
-            node.node_type = NodeType.NOT
-            node.children = []
-            tree.nodes.append(node)
-            cid = _build_tree_node(x.arg(0), tree, params)
+        for arg in expr.args:
+            cid =_build_tree_node(arg, tree, params)
             tree.nodes[node.node_id].children.append(cid)
-            return node.node_id
+        
+        return node.node_id
 
-        if x.is_le() or x.is_lt() or x.is_equals():
-            node = TreeNode()
-            node.node_id = len(tree.nodes)
-            node.node_type = TreeNode.EXPRESSION
-            
-            if x.is_le(): node.expression_type = TreeNode.COMP_LE
-            elif x.is_lt(): node.expression_type = TreeNode.COMP_LT
-            elif x.is_equals(): node.expression_type = TreeNode.COMP_EQ
-            
-            node.children = []
-            tree.nodes.append(node)
-            for a in x.args:
-                cid = _build_tree_node(a, tree, params)
-                tree.nodes[node.node_id].children.append(cid)
-            return node.node_id
-            
-        if x.is_div() or x.is_times() or x.is_plus() or x.is_minus():
-            print("----------ENTRA DOT----------")
-            node = TreeNode()
-            node.node_id = len(tree.nodes)
-            node.node_type = TreeNode.EXPRESSION
-            if x.is_div(): node.expression_type = TreeNode.ARITH_DIV
-            elif x.is_times(): node.expression_type = TreeNode.ARITH_MULT
-            elif x.is_plus(): node.expression_type = TreeNode.ARITH_ADD
-            elif x.is_minus(): node.expression_type = TreeNode.ARITH_SUB
-            
-            tree.nodes.append(node)
-            node.children = []
-            for a in x.args:
-                cid = _build_tree_node(a, tree, params)
-                tree.nodes[node.node_id].children.append(cid)
-            return node.node_id
+    if expr.is_or():
+        node = TreeNode()
+        node.node_id = len(tree.nodes)
+        node.node_type = NodeType.OR
+        node.expression_type = 0
+        node.modifier_type = 0
+        node.name = ''
+        node.parameters = []
+        node.value = 0.0
+        node.negate = False
+        node.children = []
+        tree.nodes.append(node)
+        for arg in expr.args:
+            cid = _build_tree_node(arg, tree, params)
+            tree.nodes[node.node_id].children.append(cid)
+        return node.node_id
 
-        if x.is_int_constant() or x.is_real_constant():
-            print("-------------entra number-------------")
-            node = TreeNode()
-            node.node_id = len(tree.nodes)
-            node.node_type = TreeNode.NUMBER
+    if expr.is_not():
+        print('------------------entra not--------------------')
+        node = TreeNode()
+        node.node_id = len(tree.nodes)
+        node.node_type = NodeType.NOT
+        node.children = []
+        tree.nodes.append(node)
+        cid = _build_tree_node(expr.arg(0), tree, params)
+        tree.nodes[node.node_id].children.append(cid)
+        return node.node_id
 
-            if x.is_int_constant():
-                node.value = float(x.int_constant_value())
-            else:
-                node.value = float(x.real_constant_value())
+    if expr.is_le() or expr.is_lt() or expr.is_equals():
+        node = TreeNode()
+        node.node_id = len(tree.nodes)
+        node.node_type = TreeNode.EXPRESSION
+        
+        if expr.is_le(): node.expression_type = TreeNode.COMP_LE
+        elif expr.is_lt(): node.expression_type = TreeNode.COMP_LT
+        elif expr.is_equals(): node.expression_type = TreeNode.COMP_EQ
+        
+        node.children = []
+        tree.nodes.append(node)
+        for a in expr.args:
+            cid = _build_tree_node(a, tree, params)
+            tree.nodes[node.node_id].children.append(cid)
+        return node.node_id
+        
+    if expr.is_div() or expr.is_times() or expr.is_plus() or expr.is_minus():
+        print("----------ENTRA DOT----------")
+        node = TreeNode()
+        node.node_id = len(tree.nodes)
+        node.node_type = TreeNode.EXPRESSION
+        if expr.is_div(): node.expression_type = TreeNode.ARITH_DIV
+        elif expr.is_times(): node.expression_type = TreeNode.ARITH_MULT
+        elif expr.is_plus(): node.expression_type = TreeNode.ARITH_ADD
+        elif expr.is_minus(): node.expression_type = TreeNode.ARITH_SUB
+        
+        tree.nodes.append(node)
+        node.children = []
+        for a in expr.args:
+            cid = _build_tree_node(a, tree, params)
+            tree.nodes[node.node_id].children.append(cid)
+        return node.node_id
 
-            tree.nodes.append(node)
-            return node.node_id
+    if expr.is_int_constant() or expr.is_real_constant():
+        print("-------------entra number-------------")
+        node = TreeNode()
+        node.node_id = len(tree.nodes)
+        node.node_type = TreeNode.NUMBER
 
-        if type(x) == FNode:
-            print(x)
-            fluent_name = str(x).split("(")[0]
-            print(fluent_name)
+        if expr.is_int_constant():
+            node.value = float(expr.int_constant_value())
+        else:
+            node.value = float(expr.real_constant_value())
 
-            node = TreeNode()
+        tree.nodes.append(node)
+        return node.node_id
 
-            if x.type.is_bool_type():
-                print('entra predicate')
-                node.node_type = TreeNode.PREDICATE
-            else:
-                print('entra function')
-                node.node_type = TreeNode.FUNCTION
+    if type(expr) == FNode:
+        print(NumericExpression)
+        fluent_name = str(expr).split("(")[0]
+        print(fluent_name)
 
-            node.node_id = len(tree.nodes)
-            node.expression_type = 0
-            node.modifier_type = 0
-            node.name = fluent_name
-            node.children = []
-            node.parameters = []
-            for a in x.args:
-                param = Param()
-                print(a)
-                print(params)
-                index = next((i for i, item in enumerate(params) if item == str(a)), -1)
-                param.name = "?" + f'{index}'
-                param.type = str(a.type)
-                param.sub_types = []
-                node.parameters.append(param)
+        node = TreeNode()
 
-            tree.nodes.append(node)
-            return node.node_id
+        if expr.type.is_bool_type():
+            print('entra predicate')
+            node.node_type = TreeNode.PREDICATE
+        else:
+            print('entra function')
+            node.node_type = TreeNode.FUNCTION
+
+        node.node_id = len(tree.nodes)
+        node.expression_type = 0
+        node.modifier_type = 0
+        node.name = fluent_name
+        node.children = []
+        node.parameters = []
+        for a in expr.args:
+            param = Param()
+            print(a)
+            print(params)
+            index = next((i for i, item in enumerate(params) if item == str(a)), -1)
+            param.name = "?" + f'{index}'
+            param.type = str(a.type)
+            param.sub_types = []
+            node.parameters.append(param)
+
+        tree.nodes.append(node)
+        return node.node_id
 
     raise NotImplementedError(f"No está implementado este tipo de nodo UPF: {expr}")
 
