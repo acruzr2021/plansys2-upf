@@ -7,11 +7,6 @@ This repository has the purpose of enable the use of the UPF scheduler as the pl
 
 ---
 
-
-
-
----
-
 ## Features implemented
 - [ ] Domain Expert x UPF
     - [ ] Services
