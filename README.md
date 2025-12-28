@@ -4,6 +4,12 @@
 
 This repository has the purpose of enable the use of the UPF scheduler as the plansys2 kernel, reading the domain from both classic PDDL documents and a UPF problem.
 
+
+---
+
+
+
+
 ---
 
 ## Features implemented
@@ -26,7 +32,31 @@ This repository has the purpose of enable the use of the UPF scheduler as the pl
     - [ ] Tests
 - [ ] Problem Expert x UPF
     - [ ] Services
-      - [ ] .
+      - [ ] problem_expert/add_problem
+      - [ ] problem_expert/add_problem_goal
+      - [ ] problem_expert/add_problem_instance
+      - [ ] problem_expert/add_problem_predicate
+      - [ ] problem_expert/add_problem_function
+      - [ ] problem_expert/get_problem_goal
+      - [ ] problem_expert/get_problem_instance
+      - [ ] problem_expert/get_problem_instances
+      - [ ] problem_expert/get_problem_predicate
+      - [ ] problem_expert/get_problem_predicates
+      - [ ] problem_expert/get_problem_function
+      - [ ] problem_expert/get_problem_functions
+      - [ ] problem_expert/get_problem
+      - [ ] problem_expert/is_problem_goal_satisfied
+      - [ ] problem_expert/remove_problem_goal
+      - [ ] problem_expert/clear_problem_knowledge
+      - [ ] problem_expert/remove_problem_instance
+      - [ ] problem_expert/remove_problem_predicate
+      - [ ] problem_expert/remove_problem_function
+      - [ ] problem_expert/exist_problem_predicate
+      - [ ] problem_expert/exist_problem_function
+      - [ ] problem_expert/update_problem_function
+    - [ ] Publishers
+      - [ ] problem_expert/update_notify
+      - [ ] problem_expert/knowledge
     - [ ] Test
 - [ ] Planner x UPF
     - [ ] .
