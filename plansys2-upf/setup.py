@@ -1,6 +1,6 @@
 from setuptools import setup, find_packages
 
-package_name = 'domain_expert_node_upf'
+package_name = 'plansys2_upf'
 
 setup(
     name=package_name,
@@ -23,8 +23,10 @@ setup(
     maintainer='Alba Cruz',
     license='Apache License 2.0',
     entry_points={
-        'console_scripts': [
-            'domain_upf_node = domain_expert_node_upf.domain_upf_node:main',
-        ],
-    },
+    'console_scripts': [
+        # Verifica que estas rutas sean CORRECTAS
+        'domain_upf_node = plansys2_upf.domain_expert_node_upf.domain_upf_node:main',
+        'problem_upf_node = plansys2_upf.problem_expert_node_upf.problem_upf_node:main',
+    ],
+},
 )

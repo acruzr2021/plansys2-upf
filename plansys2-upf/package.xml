@@ -2,7 +2,7 @@
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
 
-  <name>domain_expert_node_upf</name>
+  <name>plansys2_upf</name>
   <version>0.0.0</version>
   <description>TODO: Package description</description>
   <maintainer email="a.cruzr.2021@alumnos.urjc.es">roi</maintainer>
