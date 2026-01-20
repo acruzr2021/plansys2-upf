@@ -22,7 +22,6 @@ from plansys2_msgs.srv import (
     ValidateDomain
 )
 from rclpy.qos import QoSProfile
-from domain_expert_node_upf.DomainUPFReader import DomainUPFReader
 
 #from plansys2_domain_expert.domain_expert_node import DomainExpertNode
 #from plansys2_popf_plan_solver.popf_plan_solver import PopfPlanSolver

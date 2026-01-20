@@ -5,24 +5,13 @@ from rclpy.node import Node
 from rclpy.lifecycle.node import LifecycleNode
 from rclpy.lifecycle import LifecyclePublisher
 from std_msgs.msg import String
-from domain_expert_node_upf.DomainExpertNode import DomainUPFExpertNode
-from plansys2_msgs.srv import (
-    GetDomainName,
-    GetDomainTypes,
-    GetDomainActions,
-    GetDomainActionDetails,
-    GetDomainDurativeActionDetails,
-    GetDomainDerivedPredicateDetails,
-    GetStates,
-    GetNodeDetails,
-    GetDomain,
-    ValidateDomain
-)
+from plansys2_upf.domain_expert_node_upf.DomainExpertNode import DomainUPFExpertNode
+from plansys2_upf.problem_expert_node_upf.ProblemExpertNode import ProblemUPFExpertNode
 import sys
 
 def main(args =None):
     rclpy.init(args = args)
-    node = DomainUPFExpertNode()
+    node = ProblemUPFExpertNode()
 
     try:
         rclpy.spin(node)

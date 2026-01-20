@@ -5,6 +5,7 @@ import os
 from rclpy.lifecycle import LifecycleNode, TransitionCallbackReturn
 from rclpy.lifecycle import LifecyclePublisher
 from std_msgs.msg import String
+from plansys2_msgs.msg import Node as TreeNode
 from unified_planning.io import PDDLReader
 from unified_planning.shortcuts import *
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup, ReentrantCallbackGroup
@@ -33,8 +34,10 @@ from plansys2_msgs.srv import (
 from plansys2_msgs.msg import Knowledge
 from std_msgs.msg import Empty
 from rclpy.qos import QoSProfile
-from .ProblemUPFReader import ProblemUPFExpert
-from domain_expert_node_upf.DomainUPFReader import DomainUPFReader
+from plansys2_upf.problem_expert_node_upf.ProblemUPFReader import ProblemUPFExpert
+from plansys2_upf.domain_expert_node_upf.DomainExpertNode import DomainUPFExpertNode
+from plansys2_upf.domain_expert_node_upf.DomainUPFReader import DomainUPFReader
+
 
 class ProblemUPFExpertNode(LifecycleNode):
     def __init__(self):
@@ -51,7 +54,7 @@ class ProblemUPFExpertNode(LifecycleNode):
             AddProblem,
             'problem_expert/add_problem',
             self.add_problem_service_callback,
-            callback_group=self.validate_problem_callback_group  # Ajusta si usas grupos diferentes
+            callback_group=self.validate_problem_callback_group
         )
 
         self.add_problem_goal_service = self.create_service(
@@ -309,11 +312,11 @@ class ProblemUPFExpertNode(LifecycleNode):
 
         else: 
             self.get_logger().info(f'Adding goal: \n{str(request.tree)}')
-            response.success = self.problem_expert.add_problem_goal(request.tree)
+            response.success = self.problem_expert.add_goal(request.tree)
         
         if response.success:
             self.update_pub.publish(Empty())
-            self.knowledge_pub.publish(self.problem_expert.get_knowledge_as_msg())
+            self.knowledge_pub.publish(self.get_knowledge_as_msg())
         
         return response
 
@@ -334,10 +337,37 @@ class ProblemUPFExpertNode(LifecycleNode):
         return response
     
     def add_problem_predicate_service_callback(self, request, response):
-        pass
+        if self.problem_expert is None:
+            response.success = False
+            response.error_info = 'Requesting service in non-active state'
+            self.get_logger().warn(response.error_info)
+
+        else:
+            self.get_logger().info(f'Adding predicate: \n{str(request.node)}')
+            response.success = self.problem_expert.add_predicate(request.node)
+
+        if response.success:
+            self.update_pub.publish(Empty())
+            self.knowledge_pub.publish(self.get_knowledge_as_msg())
+
+        return response
 
     def add_problem_function_service_callback(self, request, response):
-        pass
+        if self.problem_expert is None:
+            response.success = False
+            response.error_info = "Requesting service in non-active state"
+            self.get_logger().warn(response.error_info)
+
+        else:
+            self.get_logger().info(f'Adding function: \n{str(request.node)}')
+            response.success = self.problem_expert.add_function(request.node)
+
+        if response.success:
+            self.update_pub.publish(Empty())
+            self.knowledge_pub.publish(self.get_knowledge_as_msg())
+
+        return response
+
 #------------------GET SERVICES-----------------------
 
     def get_problem_goal_service_callback(self, request, response):
@@ -348,12 +378,26 @@ class ProblemUPFExpertNode(LifecycleNode):
         
         else:
             response.success = True
-            response.goal = str(self.problem_expert.get_goal())
+            response.tree = self.problem_expert.get_goal()
         
-        return response # comprobar si debería devolver algo
+        return response
     
     def get_problem_instance_details_service_callback(self, request, response):
-        pass
+        if self.problem_expert is None:
+            response.success = False
+            response.error_info = "Requesting service in non-active state"
+            self.get_logger().warn(response.error_info)
+            return response
+        
+        response.instance = self.problem_expert.get_instance(request.instance_name)
+        
+        if response.instance is None:
+            response.success = False
+            response.error_info = "Instance not found"
+            return response
+        
+        response.success = True
+        return response
 
     def get_problem_instances_service_callback(self, request, response):
         if self.problem_expert is None:
@@ -368,23 +412,55 @@ class ProblemUPFExpertNode(LifecycleNode):
         return response
 
     def get_problem_predicate_details_service_callback(self, request, response):
-        pass
-
-    def get_problem_predicates_service_callback(self, request, response):
         if self.problem_expert is None:
             response.success = False
             response.error_info = "Requesting service in non-active state"
             self.get_logger().warn(response.error_info)
+            return response
 
-        else:
-            response.success = True
-            response.predicates = self.problem_expert.get_predicates()
-
+        response.node = self.problem_expert.get_predicate(request.expression)
+        
+        if response.node is None:
+            response.node = TreeNode()
+            response.success = False
+            response.error_info = "Predicate not found"
+            return response
+        
+        response.success = True
         return response
 
 
+    def get_problem_predicates_service_callback(self, request, response):
+        if self.problem_expert is None:
+            print('no llega')
+            response.success = False
+            response.error_info = "Requesting service in non-active state"
+            self.get_logger().warn(response.error_info)
+            return response
+        print('llega predicates')
+        response.success = True
+        response.states = self.problem_expert.get_predicates()
+        print(response.states)
+
+        return response
+
     def get_problem_function_details_service_callback(self, request, response):
-        pass
+        if self.problem_expert is None:
+            response.success = False
+            response.error_info = "Requesting service in non-active state"
+            self.get_logger().warn(response.error_info)
+            return response
+
+        response.node = self.problem_expert.get_function(request.expression)
+        
+        if response.node is None:
+            response.node = TreeNode()
+            response.success = False
+            response.error_info = "Function not found"
+            return response
+        
+        response.success = True
+        return response
 
     def get_problem_functions_service_callback(self, request, response):
         if self.problem_expert is None:
@@ -394,22 +470,61 @@ class ProblemUPFExpertNode(LifecycleNode):
 
         else:
             response.success = True
-            response.functions = self.problem_expert.get_functions()
+            response.states = self.problem_expert.get_functions()
 
         return response
 
     def get_problem_service_callback(self, request, response):
-        pass
+        if self.problem_expert is None:
+            response.success = False
+            response.error_info = "Requesting service in non-active state"
+            self.get_logger().warn(response.error_info)
+        else:
+            response.success = True
+            response.problem = self.problem_expert.get_problem()
 
-    def is_problem_goal_satisfied_service_callback(self, request, response):
-        pass
+        return response
+
+    def is_problem_goal_satisfied_service_callback(self, request, response): # parece que no se puede
+        if self.problem_expert is None:
+            response.success = False
+            response.error_info = "Requesting service in non-active state"
+            self.get_logger().warn(response.error_info)
+            return response
+        
+        response.satisfied = self.problem_expert.is_problem_goal_satisfied(request.tree)
+        response.success = True
+        return response
+
 
 #--------------REMOVE/CLEAR SERVICES------------------
 
     def remove_problem_goal_service_callback(self, request, response):
-        pass
+        if self.problem_expert is None:
+            response.success = False
+            response.error_info = "Requesting service in non-active state"
+            self.get_logger().warn(response.error_info)
+        else:
+            response.success = self.problem_expert.remove_goal()
+
+        if response.success:
+            self.update_pub.publish(Empty())
+            self.knowledge_pub.publish(self.get_knowledge_as_msg())
+        
+        return response
     
     def clear_problem_knowledge_service_callback(self, request, response):
+        if self.problem_expert is None:
+            response.success = False
+            response.error_info = "Requesting service in non-active state"
+            self.get_logger().warn(response.error_info)
+        else: 
+            response.success = self.problem_expert.clear_knowledge()
+        
+        if response.success:
+            self.update_pub.publish(Empty())
+            self.knowledge_pub.publish(self.get_knowledge_as_msg())
+        
         pass
 
     def remove_problem_instance_service_callback(self, request, response):
@@ -422,10 +537,24 @@ class ProblemUPFExpertNode(LifecycleNode):
         pass
 
     def exist_problem_predicate_service_callback(self, request, response):
-        pass
+        if self.problem_expert is None:
+            response.exist = False
+            error_info = "Requesting service in non-active state"
+            self.get_logger().warn(error_info)
+            return response
+        response.exist = self.problem_expert.exists_predicate(request.node)
+
+        return response
 
     def exist_problem_function_service_callback(self, request, response):
-        pass
+        if self.problem_expert is None:
+            response.exist = False
+            error_info = "Requesting service in non-active state"
+            self.get_logger().warn(error_info)
+            return response
+        response.exist = self.problem_expert.exists_function(request.node)
+
+        return response
 
     def update_problem_function_service_callback(self, request, response):
         pass
@@ -439,17 +568,21 @@ class ProblemUPFExpertNode(LifecycleNode):
         for instance in self.problem_expert.get_instances():
             print(instance)
             ret_msg.instances.append(str(instance))
+            
         print('-----predicates------')
         for predicate in self.problem_expert.get_predicates():
             print(predicate)
             ret_msg.predicates.append(str(predicate))
+
         print('-----functions------')
         for function in self.problem_expert.get_functions():
             print(function)
             ret_msg.functions.append(str(function))
+
         print('-----goal------')
         goal = self.problem_expert.get_goal()
         print('llega')
+
         if goal:
             ret_msg.goal = str(goal)
         print('llega 2')
