@@ -19,9 +19,15 @@ setup(
         'plansys2_domain_expert',
         'plansys2_popf_plan_solver'
     ],
+    tests_require=['pytest'],
     zip_safe=True,
     maintainer='Alba Cruz',
     license='Apache License 2.0',
+    extras_require={
+        'test': [
+            'pytest',
+        ],
+    },
     entry_points={
     'console_scripts': [
         # Verifica que estas rutas sean CORRECTAS
