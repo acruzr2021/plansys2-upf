@@ -1,5 +1,5 @@
 from unified_planning.model import *
-from unified_planning.io import PDDLReader
+from unified_planning.io import PDDLReader, PDDLWriter
 from dataclasses import dataclass, field
 from plansys2_msgs.msg import Action, Param, Tree, DurativeAction
 from plansys2_msgs.msg import Node as TreeNode
@@ -13,6 +13,8 @@ import inspect
 import importlib.util
 import unified_planning.model as up_model
 from collections import defaultdict
+from pathlib import Path 
+import os
 
 from unified_planning.model.timing import (
     TimeInterval,
@@ -29,7 +31,9 @@ from unified_planning.model.timing import StartTiming, EndTiming, ClosedTimeInte
 
 class DomainUPFReader:
     def __init__(self, logger=None):
+        self.domains = []
         self.domain = None
+        self.domain_pddl = None
         self.childrens = None
         if logger is None:
             self.debug = False
@@ -38,79 +42,117 @@ class DomainUPFReader:
             self.debug = True
             self.logger = logger
 
-    def load_pddl(self, pddl_path):
-        reader = PDDLReader()
-        try:
-            self.domain = reader.parse_problem(pddl_path)
-            self.children_map = self._build_children_map()
-            return self.domain
-        except Exception as e:
-            print(f"Error al cargar el archivo PDDL: {e}", file=sys.stderr)
+    def load_pddl(self, pddl_string):
+        '''Returns a UPF domain from a PDDL domain'''
 
+        reader = PDDLReader()
+        print(pddl_string)
+        try:
+            if Path(pddl_string).exists():
+                print('path')
+                with open(pddl_string, 'r') as file:
+                    pddl_string = file.read()
+            
+            print("string")
+            self.domain_pddl = pddl_string
+            self.domain = reader.parse_problem_string(pddl_string)
+            # self.domain = reader.parse_problem(pddl_path)
+            self.children_map = self._build_children_map()
+            print('sale de load_pddl')
+            return True
+        except Exception as e:
+            print(f"Error loading PDDL file: {e}", file=sys.stderr)
+            return False
+        
+
+    def extend_domain(self, pddl_string):
+        '''Returns a UPF domain extended with the given PDDL domain'''
+
+        reader = PDDLReader()
+        if isinstance(pddl_string, str) and os.path.exists(pddl_string):
+            with open(pddl_string, 'r') as file:
+                pddl_string = file.read()
+        else:
+            pddl_string = pddl_string
+        new_dom = None
+        try: 
+            
+            new_dom = reader.parse_problem_string(pddl_string)
+        except Exception as e:
+            print(f"Error loading PDDL file: {e}", file=sys.stderr)
+            return False
+
+        if new_dom is None:
+            return False
+
+        if self.domain is None:
+            self.domain = new_dom
+            return True
+
+        existing_type_names = {t.name for t in self.domain.user_types}
+
+        for t in new_dom.user_types:
+            if t.name not in existing_type_names:
+                self.domain._add_user_type(t)
+
+        existing_fluent_names = {f.name for f in self.domain.fluents}
+
+        for f in new_dom.fluents:
+            if f.name not in existing_fluent_names:
+                self.domain.add_fluent(f)
+
+        existing_action_names = {a.name for a in self.domain.actions}
+
+        for a in new_dom.actions:
+            if a.name not in existing_action_names:
+                self.domain._actions.append(a)
+
+        print("types", self.domain.all_objects)
+        print("fluents", self.domain.fluents)
+        print("actions", self.domain.actions)
+        print("types", self.domain.user_types)
+
+
+        self.children_map = self._build_children_map()
+        writer = PDDLWriter(self.domain)
+        domain_str = writer.get_domain()
+        self.domain_pddl = domain_str
+
+        return True
 
     def get_name(self):
+        '''Returns the name of the domain'''
+
         return str(self.domain.name) if self.domain else ""
+
+    def get_types(self):
+        '''Returns the types of the domain'''
+
+        types = [str(x) for x in self.domain.user_types]
+        if "object" not in types:
+            types.insert(0, "object")
+
+        for t in types:
+            if " - " in t:
+                types.remove(t)
+                types.append(t.split(" - ")[0])
+            print(t)
+
+        return types
     
-    def add_domain(self, domain: Problem):
+    def get_constants(self, type):
+        '''Returns the constants of the domain'''
 
-        if not domain:
-            print('Empty domain', file=sys.stderr)
-            return
-
-        new_domain = Domain()
-
-        new_domain.domain = self._execute_upf_problem(domain)
-
-        new_domain.name = self.get_name(new_domain.domain)
-        new_domain.requirements = self.get_requirements(new_domain.domain)
-        new_domain.types = self.get_types(new_domain.domain)
-        new_domain.constants = self.get_constants(new_domain.domain)
-        new_domain.predicates = self.get_predicates(new_domain.domain)
-        new_domain.functions = self.get_functions(new_domain.domain)
-        new_domain.derived_predicates = self.get_derived_predicates(new_domain.domain)
-        new_domain.actions = self.get_actions(new_domain.domain)
-
-        self._domains.append(new_domain)
-
-        return new_domain
-
-    def get_joint_domain(self): # combinar múltiples dominios pddl en un único dominio.
-        ret = ''
-        
-        pass
-
-    def get_end_block(self):
-        ## parser(?)
-        pass
-
-    # def get_name(self, domain: Problem):
-    #     # match = re.search(r'problem\s*\(\s*["\'](.*?)["\']', domain)
-        
-    #     # if match:
-    #     #     return match.group(1)
-    #     # else:
-    #     #     return ""
-    #     return domain.name
-
-    def get_requirements(self): # en upf .kind
-        # if not domain:
-        #     return []
-        
-        return self.domain.kind
-
-    def get_types(self): # usertypes
-        # if not domain:
-        #     return []
-        
-        return [str(x) for x in self.domain.user_types]
-    
-    def get_constants(self, domain): # object
-        if not domain:
+        if not type:
             return []
-        
-        return self.domain.all_objects
+                
+        constant =[str(x) for x in self.domain.all_objects if str(x.type) == type]
+        return constant
 
-    def get_predicates(self): # Fluent con booltype
+
+    def get_predicates(self):
+        '''Returns the predicates of the domain'''
+
         nodes = []
         for fluent in self.domain.fluents:
             if fluent.type.is_bool_type():
@@ -121,7 +163,9 @@ class DomainUPFReader:
 
         return nodes
 
-    def get_functions(self): # fluent con realtype
+    def get_functions(self):
+        '''Returns the functions of the domain'''
+
         nodes =  []
         for fluent in self.domain.fluents:
             if not fluent.type.is_bool_type():
@@ -133,9 +177,10 @@ class DomainUPFReader:
         return nodes
     
     def get_predicate(self, name):
+        '''Returns the UPF predicate in a Tree plansys msg format'''
 
         for predicate in self.domain.fluents:
-            if predicate._name == name:
+            if predicate._name == name.lower():
                 node = TreeNode()
                 node.node_type = TreeNode.PREDICATE
                 node.name = str(predicate._name)
@@ -143,9 +188,13 @@ class DomainUPFReader:
                 print(vars(predicate))
                 for arg in predicate._signature:
                     param = Param()
-                    param.name = "?" + f'{len(node.parameters)}'
                     param.type = str(arg).split(" ")[0]
-                    param.sub_types = []
+                    param.name = "?" + f'{param.type}' +f'{len(node.parameters)}'
+                    upf_type = self._get_type_by_name(param.type)
+                    if upf_type is None:
+                        param.sub_types = []
+                    else:
+                        param.sub_types = [str(child) for child in self.get_children(str(upf_type))]
                     node.parameters.append(param)
 
                 return node
@@ -153,8 +202,10 @@ class DomainUPFReader:
         return None
           
     def get_function(self, name):
+        '''Returns the UPF function in a Tree plansys msg format'''
+
         for predicate in self.domain.fluents:
-            if predicate._name == name:
+            if predicate._name == name.lower():
                 node = TreeNode()
                 node.node_type = TreeNode.FUNCTION
                 node.name = str(predicate._name)
@@ -162,9 +213,13 @@ class DomainUPFReader:
                 print(vars(predicate))
                 for arg in predicate._signature:
                     param = Param()
-                    param.name = "?" + f'{len(node.parameters)}'
                     param.type = str(arg).split(" ")[0]
-                    param.sub_types = []
+                    param.name = "?" + f'{param.type}' + f'{len(node.parameters)}'
+                    upf_type = self._get_type_by_name(param.type)
+                    if upf_type is None:
+                        param.sub_types = []
+                    else:
+                        param.sub_types = [str(child) for child in self.get_children(str(upf_type))]
                     node.parameters.append(param)
 
                 return node
@@ -172,100 +227,80 @@ class DomainUPFReader:
         return None
       
     def get_domain(self):
-        return str(self.domain)
-
-    def get_derived_predicates(self): 
-        '''
-        reachable = Fluent("reachable", BoolType(), [room_t, room_t])
-        x = Variable("x", room_t)
-        y = Variable("y", room_t)
-        z = Variable("z", room_t)
-
-        problem.add_derived_fluent(
-            reachable(x, y),
-            Or(connected(x, y), Exists([z], And(connected(x, z), reachable(z, y))))
-        )'''
- 
-        return self.domain.derived_predicates
+        '''Returns the UPF domain in PDDL format'''
+        writer = PDDLWriter(self.domain)
+        domain_str = writer.get_domain()
+        return domain_str
 
     def get_actions(self):
-        '''
-        InstantaneousAction
-        DurativeAction
-        Task
-        '''
-    
-        actions = [
-            str(a) for a in self.domain.actions
-            if isinstance(a, (InstantaneousAction))
-        ]
-
-        self.logger.warn(f"actions: {actions}")
-        self.logger.warn(f"{self.domain.actions}")
-
+        '''Returns a list of action names'''
+        
+        actions = []
+        for a in self.domain.actions:
+            if isinstance(a, (InstantaneousAction)):
+                actions.append(str(a).split("(")[0].split(" ")[-1])
+                print(actions)
         return actions
 
-        #return [str(action) for action in self.domain.actions]
-
-    def get_type_by_name(self, type_name):
+    def _get_type_by_name(self, type_name):
+        '''Returns the UPF type by name'''
         for t in self.domain.user_types:
             if t.name == type_name:
                 return t
         return None
 
+    def get_action(self, action_name, params = None):
+        '''Returns the UPF action by name and parameters (parameters are optional)'''
 
-    def get_action(self, action_name, params):
-        
         for action_obj in self.domain.actions:
             action = str(action_obj)
             
             name = action.split("(")[0].split(" ")[-1]
-            params_action = re.split(r"\s*,\s*", action.split("(")[1].split(")")[0]) # revisar si eso es lo que quiero
-            self.logger.warn(f"name: i{name}i")
+            params_action = re.split(r"\s*,\s*", action.split("(")[1].split(")")[0])
+            #self.logger.warn(f"name: i{name}i")
             
             if name != action_name:
-                self.logger.warn(f"name: i{name}i != action_name: i{action_name}i")
+                print('nope', name, action_name, type(name), type(action_name))
+                #self.logger.warn(f"name: i{name}i != action_name: i{action_name}i")
                 continue
             
 
             if params and (len(params) != len(params_action)):
-                self.logger.info(f"params: {len(params)}")
-                self.logger.warn(f"params_action: {len(params_action)}")
+                # self.logger.info(f"params: {len(params)}")
+                # self.logger.warn(f"params_action: {len(params_action)}")
 
                 continue
             
             if params:
                 params_action_name = [re.split(r"\s+", param_a)[1] for param_a in params_action]    
-                self.logger.info(f"params_action_name: {params_action_name}")
+                #self.logger.info(f"params_action_name: {params_action_name}")
 
                 for param in params:
                     if param not in params_action_name:
-                        self.logger.warn(f"param: i{param}i not in params_action: {params_action_name}")
+                        #self.logger.warn(f"param: i{param}i not in params_action: {params_action_name}")
                         return
 
             same_params = True
             params_list = []
 
-            for param in params:
-                self.logger.info(f"param: {param}")
+            if params is not None:
+                for param in params:
+                    #self.logger.info(f"param: {param}")
 
-                if param not in params_action:
-                    self.logger.warn(f"param: i{param}i not in params_action: {params_action}")
-                    same_params = False
-                    break
+                    if param not in params_action:
+                        #self.logger.warn(f"param: i{param}i not in params_action: {params_action}")
+                        same_params = False
+                        break
             
-            if same_params:
-                self.logger.info(f"action: {action}")
-                self.logger.info(f"name: {name}")
+            if same_params or not params:
+                print('entra en el if', action_obj)
                 action_return = Action()
-                self.logger.info(f"action_return:")
                 action_return.name = name
                 action_return.parameters = []
-                self.logger.info(f"action_return:")
                 
                 for param in params_action:
+                    print("param", param)
                     param_list = re.split(r"\s+", param)
-                    self.logger.info(f"param_list: {param_list}")
 
                     print('added to the list: ', param_list[1])
                     params_list.append(param_list[1])
@@ -274,111 +309,98 @@ class DomainUPFReader:
                     param_return.name = "?" + f'{len(params_list) - 1}'
                     param_return.type = str(param_list[0])
 
-                    upf_type = self.get_type_by_name(param_list[0])
+                    upf_type = self._get_type_by_name(param_list[0])
                     print(upf_type)
                     
                     if upf_type is None:
                         param_return.sub_types = []
                     else:
-                        param_return.sub_types = [child.name for child in self.get_children(upf_type.name)]
-
-                        self.logger.info(f"param_return children: {param_return.sub_types}")
+                        param_return.sub_types = [str(child) for child in self.get_children(str(upf_type))]
 
                     action_return.parameters.append(param_return)
 
                 print(action_obj)
 
                 print(type(action_obj))
-                action_return.preconditions = preconditions_to_tree(action_obj._preconditions, params_list)   # FNode
-                #eff_tree = effects_to_tree(effects) 
+                action_return.preconditions = preconditions_to_tree(action_obj._preconditions, params_list)
 
                 # effects
                 print('\n\n\n--------------------EFFECTS-------------------\n\n\n')
                 action_return.effects = effects_to_tree(action_obj.effects, params_list)
                 print('sale de los efectos')
-                #action_return
+
                 return action_return
             
         return None
 
     def get_durative_actions(self):
-        actions = [
-            str(a) for a in self.domain.actions
-            if isinstance(a, (DurativeAction))
-        ]
+        '''Returns a list of durative action names'''
 
-        self.logger.warn(f"actions: {actions}")
-        self.logger.warn(f"{self.domain.actions}")
+        actions = [
+            (str(a).split("(")[0].split(" ")[-1]) for a in self.domain.actions
+            if not isinstance(a, InstantaneousAction)
+        ]
+        print(actions)
 
         return actions
 
-    def get_durative_action(self, action_name, params):
-
-        self.logger.info(f'action name: {action_name}')
-
-        self.logger.info(f"{self.domain.actions}")
+    def get_durative_action(self, action_name, params=None):
+        '''Returns the UPF durative action by name and parameters (parameters are optional)'''
 
         for action_obj in self.domain.actions:
 
-            # if not isinstance(action_obj, (DurativeAction)):
-            #     continue
             action = str(action_obj)
-
-            self.logger.info(f'vars(action_obj)')
             
             name = action.split("(")[0].split(" ")[-1]
             params_action = re.split(r"\s*,\s*", action.split("(")[1].split(")")[0])
-            self.logger.warn(f"name: i{name}i")
-
 
             if name != action_name:
-                self.logger.warn(f"name: i{name}i != action_name: i{action_name}i")
+               # selg.logger.warn(f"name: i{name}i != action_name: i{action_name}i")
                 continue
             
             if params and (len(params) != len(params_action)):
-                self.logger.info(f"params: {len(params)}")
-                self.logger.warn(f"params_action: {len(params_action)}")
+               # selg.logger.info(f"params: {len(params)}")
+               # selg.logger.warn(f"params_action: {len(params_action)}")
 
                 continue
-            
-            self.logger.info("llega")
 
             if params:
                 params_action_name = [re.split(r"\s+", param_a)[1] for param_a in params_action]    
-                self.logger.info(f"params_action_name: {params_action_name}")
+               # selg.logger.info(f"params_action_name: {params_action_name}")
 
                 for param in params:
                     if param not in params_action_name:
-                        self.logger.warn(f"param: i{param}i not in params_action: {params_action_name}")
+                       # selg.logger.warn(f"param: i{param}i not in params_action: {params_action_name}")
                         return
 
-            self.logger.info(f"params: {params}")
+           # selg.logger.info(f"params: {params}")
             
             same_params = True
             params_list = []
 
-            for param in params:
-                self.logger.info(f"param: {param}")
+            if params is not None:
+                for param in params:
+                # selg.logger.info(f"param: {param}")
 
-                if param not in params_action:
-                    self.logger.warn(f"param: i{param}i not in params_action: {params_action}")
-                    same_params = False
-                    break
+                    if param not in params_action:
+                    # selg.logger.warn(f"param: i{param}i not in params_action: {params_action}")
+                        same_params = False
+                        break
 
-            self.logger.info(f"same_params: {same_params}")
+           # selg.logger.info(f"same_params: {same_params}")
 
-            if same_params:
-                self.logger.info(f"action: {action}")
-                self.logger.info(f"name: {name}")
+            if same_params or params is None:
+               # selg.logger.info(f"action: {action}")
+               # selg.logger.info(f"name: {name}")
                 action_return = DurativeAction()
-                self.logger.info(f"action_return:")
+               # selg.logger.info(f"action_return:")
                 action_return.name = name
                 action_return.parameters = []
-                self.logger.info(f"action_return:")
+               # selg.logger.info(f"action_return:")
                 
                 for param in params_action:
                     param_list = re.split(r"\s+", param)
-                    self.logger.info(f"param_list: {param_list}")
+                   # selg.logger.info(f"param_list: {param_list}")
 
                     print('added to the list: ', param_list[1])
                     params_list.append(param_list[1])
@@ -387,26 +409,26 @@ class DomainUPFReader:
                     param_return.name = "?" + f'{len(params_list) - 1}'
                     param_return.type = str(param_list[0])
 
-                    upf_type = self.get_type_by_name(param_list[0])
-                    print(upf_type)
+                    upf_type = self._get_type_by_name(param_list[0])
+                    print(upf_type, type(upf_type), dir(upf_type))
                     
                     if upf_type is None:
                         param_return.sub_types = []
                     else:
-                        param_return.sub_types = [child.name for child in self.get_children(upf_type.name)]
+                        param_return.sub_types = [str(child) for child in self.get_children(str(upf_type))]
 
-                        self.logger.info(f"param_return children: {param_return.sub_types}")
+                       # selg.logger.info(f"param_return children: {param_return.sub_types}")
 
                     action_return.parameters.append(param_return)
 
                 print(action_obj)
 
-                self.logger.info(f"action_obj:")
-                self.logger.info(f'{type(action_obj)}')
-                self.logger.info(f'{vars(action_obj)}')
+               # selg.logger.info(f"action_obj:")
+               # selg.logger.info(f'{type(action_obj)}')
+               # selg.logger.info(f'{vars(action_obj)}')
 
-                self.logger.info(f'{action_obj.conditions}')
-                self.logger.info(f'{type(action_obj.conditions)}')
+               # selg.logger.info(f'{action_obj.conditions}')
+               # selg.logger.info(f'{type(action_obj.conditions)}')
 
                 print("TimePointInterval =", TimePointInterval)
                 print("type(TimePointInterval) =", type(TimePointInterval))
@@ -414,6 +436,13 @@ class DomainUPFReader:
 
                 START = type(StartTiming())
                 END = type(EndTiming())
+
+                action_return.at_start_requirements = Tree()
+                action_return.over_all_requirements = Tree()
+                action_return.at_end_requirements = Tree()
+
+                action_return.at_start_effects = Tree()
+                action_return.at_end_effects = Tree()
 
                 for interval, conds in action_obj._conditions.items():
 
@@ -441,129 +470,64 @@ class DomainUPFReader:
                         print(">>> AT END")
                         action_return.at_end_requirements = preconditions_to_tree(conds, params_list)
 
+
                 if len(action_return.at_start_requirements.nodes) == 0:
-                    self.logger.info('************ENTRA EN NO START REQUIREMENT***********')
+                   # selg.logger.info('************ENTRA EN NO START REQUIREMENT***********')
                     action_return.at_start_requirements = Tree()
                     make_node(action_return.at_start_requirements, TreeNode.AND)
                 if len(action_return.at_end_requirements.nodes) == 0:
-                    self.logger.info('************ENTRA EN NO END REQUIREMENT***********')
+                   # selg.logger.info('************ENTRA EN NO END REQUIREMENT***********')
                     action_return.at_end_requirements = Tree()
                     make_node(action_return.at_end_requirements, TreeNode.AND)
                 if len(action_return.over_all_requirements.nodes) == 0:
-                    self.logger.info('************ENTRA EN NO OVER ALL REQUIREMENT***********')
+                   # selg.logger.info('************ENTRA EN NO OVER ALL REQUIREMENT***********')
                     action_return.over_all_requirements = Tree()
                     make_node(action_return.over_all_requirements, TreeNode.AND)
 
                 # effects
-                self.logger.info(f"action_return: {action_obj._effects}")
+               # selg.logger.info(f"action_return: {action_obj._effects}")
 
                 for time, eff in action_obj._effects.items():
-                    self.logger.info(f"time: {time}, eff: {eff}")
-                    self.logger.info(f"{type(time)}")
+                   # selg.logger.info(f"time: {time}, eff: {eff}")
+                   # selg.logger.info(f"{type(time)}")
 
 
                     if str(time) == 'start':
-                        self.logger.info(f">>> AT START")
+                       # selg.logger.info(f">>> AT START")
                         action_return.at_start_effects = effects_to_tree(eff, params_list)
                     elif str(time) == 'end':
-                        self.logger.info(f">>> AT END")
+                       # selg.logger.info(f">>> AT END")
                         action_return.at_end_effects = effects_to_tree(eff, params_list)
                     
                 if len(action_return.at_start_effects.nodes) == 0:
-                    self.logger.info('************ENTRA EN NO START EFFECTS***********')
+                   # selg.logger.info('************ENTRA EN NO START EFFECTS***********')
                     action_return.at_start_effects = Tree()
                     make_node(action_return.at_start_effects, TreeNode.AND)
                 if len(action_return.at_end_effects.nodes) == 0:
-                    self.logger.info('************ENTRA EN NO END EFFECTS***********')
+                   # selg.logger.info('************ENTRA EN NO END EFFECTS***********')
                     action_return.at_end_effects = Tree()
-                    make_node(action_return.at_end_effects, TreeNode.AND)    
+                    make_node(action_return.at_end_effects, TreeNode.AND)
+                print(action_return)    
                 return action_return
         
-        pass
-
-    def _execute_upf_problem(self, module_path):
-        if not os.path.exists(module_path):
-            raise FileNotFoundError(f"No existe el archivo: {module_path}")
-        
-        module_name = os.path.splitext(os.path.basename(module_path))[0]
-        spec = importlib.util.spec_from_file_location(module_name, module_path)
-        module = importlib.util.module_from_spec(spec)
-
-        found_problems = []
-        original_problem_class = Problem
-
-        class ProblemTracker(original_problem_class):
-            def __init__(self, *args, **kwargs):
-                super().__init__(*args, **kwargs)
-                if self not in found_problems:
-                    found_problems.append(self)
-                    print(f"[DEBUG] Problem creado dinámicamente: {self.name}")
-
-        up_model.Problem = ProblemTracker
-
-        try:
-            spec.loader.exec_module(module)
-        finally:
-            up_model.Problem = original_problem_class
-
-        for name, value in inspect.getmembers(module):
-            if isinstance(value, original_problem_class) and value not in found_problems:
-                print(f"[INFO] Problema encontrado como variable global '{name}'")
-                found_problems.append(value)
-
-        for name, func in inspect.getmembers(module, inspect.isfunction):
-            try:
-                sig = inspect.signature(func)
-                if len(sig.parameters) == 0:
-                    result = func()
-                    if isinstance(result, original_problem_class) and result not in found_problems:
-                        print(f"[INFO] Problema devuelto por función '{name}()'")
-                        found_problems.append(result)
-            except Exception as e:
-                print(f"[WARN] No se pudo ejecutar '{name}()': {e}")
-
-        if not found_problems:
-            print('There is not a UPF domain in file {domain}', file=sys.stderr)
-            return
-        
-        return found_problems[0]
-    
-    def get_tree(self, action_string):
-        tree = Tree()
-
-        
-        node = Node()
-        return tree
+        return None
 
     def get_children(self, type_name):
+        '''Returns the children of a type'''
+
         print(type_name)
         if self.children_map is None:
             return []
         return self.children_map.get(type_name, [])
  
     def _build_children_map(self):
+        '''Returns a dictionary with the children of each type'''
  
-        children = defaultdict(list)
-
- 
-        for t in self.domain.user_types:
-            if t.father is not None:
-                children[t.father].append(t)
-
-                children[t.father.name].append(t)
- 
-        for parent, childs in children.items():
-            print(parent, " => hijos:", childs)
-        
-        return children
-
-    def childrens(self):
-
         children = defaultdict(list)
 
         for t in self.domain.user_types:
             if t.father is not None:
-                children[t.father].append(t)
+                children[t.father.name].append(t.name)
 
         for parent, childs in children.items():
             print(parent, " => hijos:", childs)
@@ -571,8 +535,7 @@ class DomainUPFReader:
         return children
 
 def _build_tree_node(expr, tree:Tree, params) -> int:
-    """Crea nodos Tree.Node recursivamente igual que get_tree de C++, 
-    pero en una sola función y para UPF."""
+    """Returns Tree nodes recursively using UPF sintax"""
 
     # ---------- Operadores lógicos ----------
     print(expr)
@@ -700,11 +663,15 @@ def _build_tree_node(expr, tree:Tree, params) -> int:
     raise NotImplementedError(f"No está implementado este tipo de nodo UPF: {expr}")
 
 def preconditions_to_tree(expr, params) -> Tree:
+    '''Returns a Tree plansys msg from a precondition'''
+
     tree = Tree()
     _build_tree_node(expr, tree, params)
     return tree
 
 def make_node(tree, node_type, name="", value=0.0, negate=False, parameters=None, expression_type=0, modifier_type=0):
+    '''Builds a Node plansys msg'''
+
     node = TreeNode()
     node.node_id = len(tree.nodes)
     node.node_type = node_type
@@ -719,6 +686,8 @@ def make_node(tree, node_type, name="", value=0.0, negate=False, parameters=None
     return node
 
 def make_predicate_node(tree, fluent, params):
+    '''Builds a Node plansys msg from a predicate'''
+
     parameters = []
     for a in fluent.args:
         index = next((i for i, item in enumerate(params) if item == str(a)), -1)
@@ -730,6 +699,7 @@ def make_predicate_node(tree, fluent, params):
     return make_node(tree, TreeNode.PREDICATE, name=str(fluent), parameters=parameters)
 
 def effects_to_tree(effects, params) -> Tree:
+    '''Returns a Tree plansys msg from a list of effects'''
     global tree
     tree = Tree()
 

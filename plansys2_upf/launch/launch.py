@@ -5,7 +5,10 @@ from launch_ros.actions import Node
 
 
 def generate_launch_description():
+    package_name = 'plansys2_upf'
+
     model_file = LaunchConfiguration('model_file')
+    problem_file = LaunchConfiguration('problem_file')
     namespace = LaunchConfiguration('namespace')
     params_file = LaunchConfiguration('params_file')
 
@@ -29,13 +32,24 @@ def generate_launch_description():
     )
 
     domain_expert_cmd = Node(
-        package='domain_expert_node_upf',
-        executable='domain_upf_node',       # <-- Debe coincidir con setup.py
+        package=package_name,
+        executable='domain_upf_node',
         name='domain_expert_upf',
         namespace=namespace,
         output='screen',
         parameters=[
             {'model_file': model_file}
+        ] + ([params_file] if params_file.perform({}) else []),
+    )
+
+    problem_expert_cmd = Node(
+        package=package_name,
+        executable='problem_upf_node',
+        name='problem_expert_upf',
+        namespace=namespace,
+        output='screen',
+        parameters=[
+            {'model_file': model_file, 'problem_file': problem_file}
         ] + ([params_file] if params_file.perform({}) else []),
     )
 
@@ -45,5 +59,6 @@ def generate_launch_description():
     ld.add_action(declare_namespace_cmd)
     ld.add_action(declare_params_file_cmd)
     ld.add_action(domain_expert_cmd)
+    ld.add_action(problem_expert_cmd)
 
     return ld
