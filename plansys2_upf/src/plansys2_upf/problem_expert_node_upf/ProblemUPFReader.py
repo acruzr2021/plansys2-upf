@@ -150,6 +150,8 @@ class ProblemUPFExpert:
         
         available_types = [t.name for t in self.domain.user_types]
         
+        instance.type = instance.type.lower()
+        
         if instance.type not in available_types:
             print(f"Tipo '{instance.type}' no encontrado. Tipos disponibles: {available_types}")
             return False
@@ -157,9 +159,13 @@ class ProblemUPFExpert:
         if instance in self.instances:
             return True
         
+        if instance.name in [i.name for i in self.instances]:
+            print(f"Ya existe una instancia con el nombre '{instance.name}'.")
+            return False
+        
         type_obj = None
         for user_type in self.domain.user_types:
-            if user_type.name == instance.type:
+            if user_type.name == instance.type.lower():
                 type_obj = user_type
                 break
         
@@ -174,23 +180,31 @@ class ProblemUPFExpert:
     def add_predicate(self, predicate):
         if not isinstance(predicate, TreeNode):
             return False
+        
         if predicate.node_type != TreeNode.PREDICATE:
             return False
         
-        if self.exists_predicate(predicate):
-            return True
-
         fluent = self._find_matching_fluent(
             predicate.name, predicate.parameters, bool_fluent=True
         )
+
         if fluent is None:
             return False
+        
+        if len(predicate.parameters) != len(fluent.signature):
+            return False
+        
+        print(fluent)
+
+        if self.exists_predicate(predicate):
+            return True
 
         if predicate in self.predicates:
             return True
 
         expr = self._build_upf_expression(fluent, predicate.parameters)
         if expr is None:
+            print('no expresion. sale false')
             return False
 
         self.problem.set_initial_value(expr, True)
@@ -203,7 +217,7 @@ class ProblemUPFExpert:
         for obj in self.problem.all_objects:
             if obj.name == name:
                 
-                obj_type_name = obj.type if isinstance(obj.type, str) else str(obj.type)
+                obj_type_name = obj.type if isinstance(obj.type, str) else str(obj.type.name)
                 if obj_type_name == type_name:
                     return obj
                 print(obj_type_name, type_name)
@@ -219,9 +233,11 @@ class ProblemUPFExpert:
         )
         
         if fluent is None:
+            print('fluent no encontrado')
             return False
         
         if function.node_type != TreeNode.FUNCTION:
+            print('tipo incorrecto')
             return False
 
         if not self.exists_function(function):
@@ -246,23 +262,23 @@ class ProblemUPFExpert:
         if not isinstance(goal, Tree):
             return False
 
-        if self.goal is not None:
-            self.remove_goal()
-
         self._node_map = {n.node_id: n for n in goal.nodes}
-        root = self._node_map[0]
-        print(root)
+
+        root = self._node_map.get(0)
+        if root is None:
+            return False
+
         upf_goal = self._tree_to_upf(root)
 
         if upf_goal is None:
             return False
 
+        if self.goal is not None:
+            self.remove_goal()
+
         self.problem.add_goal(upf_goal)
         self.goal = goal
         return True
-
-
-        
 
     def get_goal(self):
         if self.goal is None:
@@ -396,14 +412,18 @@ class ProblemUPFExpert:
         return self.functions
     
     def get_problem(self):
-        return str(self.problem)
+        try:
+            writer = PDDLWriter(self.problem)    
+            return writer.get_problem()
+        except:
+            return str(self.problem)
     
     def remove_goal(self):
         if self.goal == None:
             self.problem.clear_goals()
             return True     
 
-        self.goal.nodes = self.goal.nodes[:1]
+        self.goal = None
         self.problem.clear_goals()
         return True
     
@@ -415,7 +435,6 @@ class ProblemUPFExpert:
         from unified_planning.io import PDDLReader
         reader = PDDLReader()
 
-        # reconstruir problema vacío SOLO con dominio
         self.problem = reader.parse_problem_string(self.domain_pddl)
 
         self.instances = []
@@ -426,7 +445,7 @@ class ProblemUPFExpert:
         return True
 
     
-    def remove_instance(self, instance): # eliminar también predicados/funciones y goals que sean invalidos
+    def remove_instance(self, instance):
         print('\n\n\n ----------------REMOVE INSTANCE------------------\n\n\n')
         if not isinstance(instance, Param):
             return False
@@ -443,9 +462,7 @@ class ProblemUPFExpert:
         print('\t------------PREDICADOS A ELIMINAR---------')
         for pred in self.predicates:
             print(pred, pred.name, pred.parameters)
-            # if instance not in pred.parameters:
-            #     print('no coincide')
-            #     continue
+            
             for param in pred.parameters:
                 print(param.name, instance.name, param.type, instance.type)
                 if param.name == instance.name and param.type == instance.type:
@@ -473,24 +490,6 @@ class ProblemUPFExpert:
         print(f'problem: {self.problem._initial_value}')
 
         print('\t------------GOALS A ELIMINAR---------')
-        # valid_goals = []
-
-        # for g in self.problem.goals:
-        #     invalid = False
-        #     print(g)
-        #     for subgoal in g.args:
-        #         print(subgoal)
-        #         for a in subgoal.args:
-        #             print(a)
-        #             if str(a) == instance.name and a.type == instance.type:
-        #                 invalid = True
-        #                 break
-        #         if not invalid:
-        #             valid_goals.append(subgoal)
-
-        # print(f'goals validos {valid_goals}')
-
-        
 
         new_goal = self._clear_goal(self.goal, instance)
 
@@ -518,18 +517,25 @@ class ProblemUPFExpert:
         print('\n')
 
         self.instances.remove(instance)
-        # self.problem.remove_object(instance) #eliminar instancia
 
         return True
 
     def remove_predicate(self, predicate):
         if not isinstance(predicate, TreeNode):
             return False
+        
+        fluent = self._find_matching_fluent(predicate.name, predicate.parameters, True)
+        if fluent is None:
+            return False
+        
+        if len(predicate.parameters) != len(fluent.signature):
+            return False
+        
+        print(fluent)
 
         if not self.exists_predicate(predicate):
-            return False
+            return True
 
-        fluent = self._find_matching_fluent(predicate.name, predicate.parameters, True)
         expr = self._build_upf_expression(fluent, predicate.parameters)
         if expr is None:
             return False
@@ -556,12 +562,6 @@ class ProblemUPFExpert:
         fluent = self._tree_to_upf(function)
 
         print(fluent)
-
-        # functions_upf = [f for f in self.problem._initial_value if (f.name != function.name and f.parameters != function.parameters and f.is_real_type())]
-        # print(functions_upf)
-        # predicates_upf = [p for p in self.problem._initial_value if p.is_bool_type()]
-        
-        # instances_upf = [i for i in self.all_objects]
 
         self._rebuild_problem(functions=[fluent])
         self.functions = [
@@ -677,8 +677,7 @@ class ProblemUPFExpert:
 
             ok = True
             for p, f in zip(parameters, fluent.signature):
-                print(p, f)
-                if str(p.type) != str(f.type):
+                if not self._types_compatible(p.type, f.type):
                     ok = False
                     break
 
@@ -687,6 +686,103 @@ class ProblemUPFExpert:
                 return fluent
 
         return None
+    
+    def is_valid_goal(self, goal: Tree) -> bool:
+        if not isinstance(goal, Tree):
+            return False
+
+        if not goal.nodes:
+            return False
+
+        self._node_map = {n.node_id: n for n in goal.nodes}
+
+        return self._check_goal_node(0)
+    
+    def _check_goal_node(self, node_id: int) -> bool:
+
+        node = self._node_map.get(node_id)
+        if node is None:
+            return False
+
+        if node.node_type in (TreeNode.AND, TreeNode.OR):
+            return all(self._check_goal_node(child_id) for child_id in node.children)
+
+        if node.node_type == TreeNode.NOT:
+            if not node.children:
+                return False
+            return self._check_goal_node(node.children[0])
+
+        if node.node_type == TreeNode.PREDICATE:
+            return self.is_valid_predicate(node)
+
+        if node.node_type == TreeNode.FUNCTION:
+            return self.is_valid_function(node)
+
+        if node.node_type == TreeNode.EXPRESSION:
+            return all(self._check_goal_node(child_id) for child_id in node.children)
+
+        if node.node_type == TreeNode.NUMBER:
+            return True
+
+        return False
+    
+    def is_valid_function(self, node) -> bool:
+
+        fluent = self._find_matching_fluent(node.name, node.parameters, False)
+
+        if fluent is None:
+            return False
+
+        if len(node.parameters) != len(fluent.signature):
+            return False
+
+        for p, f in zip(node.parameters, fluent.signature):
+            if str(p.type) != str(f.type):
+                return False
+
+        return True
+
+
+    def is_valid_predicate(self, node) -> bool:
+
+        fluent = self._find_matching_fluent(node.name, node.parameters, True)
+
+        if fluent is None:
+            return False
+
+        if len(node.parameters) != len(fluent.signature):
+            return False
+
+        for p, f in zip(node.parameters, fluent.signature):
+            if str(p.type) != str(f.type):
+                return False
+
+        return True
+
+    def _types_compatible(self, param_type_name, fluent_type):
+        """
+        param_type_name: string (ej. 'room_with_teleporter')
+        fluent_type: UPF Type object
+        """
+
+        if param_type_name.lower() == fluent_type.name.lower():
+            return True
+
+        current = self.domain.user_types
+        type_map = {t.name: t for t in current}
+
+        if param_type_name not in type_map:
+            return False
+
+        t = type_map[param_type_name]
+
+        while t is not None:
+            if t.name.lower() == fluent_type.name.lower():
+                return True
+            t = t.father
+
+        return False
+
     
     def _build_upf_expression(self, fluent, parameters):
         objs = []
@@ -698,24 +794,55 @@ class ProblemUPFExpert:
         return fluent(*objs)
     
     def _tree_to_upf(self, node):
+
         if node.node_type == TreeNode.PREDICATE:
             fluent = self._find_matching_fluent(node.name, node.parameters, True)
+            if fluent is None:
+                return None
             expr = self._build_upf_expression(fluent, node.parameters)
+            if expr is None:
+                return None
             return Not(expr) if node.negate else expr
-        
+
+
         if node.node_type == TreeNode.FUNCTION:
             fluent = self._find_matching_fluent(node.name, node.parameters, False)
+            if fluent is None:
+                return None
             expr = self._build_upf_expression(fluent, node.parameters)
+            if expr is None:
+                return None
             return Not(expr) if node.negate else expr
 
+
         elif node.node_type == TreeNode.AND:
-            return And(*[self._tree_to_upf(self._node_map[cid]) for cid in node.children])
+            children = []
+            for cid in node.children:
+                child_expr = self._tree_to_upf(self._node_map[cid])
+                if child_expr is None:
+                    return None
+                children.append(child_expr)
+            return And(*children)
+
 
         elif node.node_type == TreeNode.OR:
-            return Or(*[self._tree_to_upf(self._node_map[cid]) for cid in node.children])
+            children = []
+            for cid in node.children:
+                child_expr = self._tree_to_upf(self._node_map[cid])
+                if child_expr is None:
+                    return None
+                children.append(child_expr)
+            return Or(*children)
+
 
         elif node.node_type == TreeNode.NOT:
-            return Not(self._tree_to_upf(self._node_map[node.children[0]]))
+            child_expr = self._tree_to_upf(self._node_map[node.children[0]])
+            if child_expr is None:
+                return None
+            return Not(child_expr)
+
+        return None
+
 
     
     def _build_tree(self, tree_msg):
@@ -739,27 +866,21 @@ class ProblemUPFExpert:
         old = self.problem
         new = Problem(old.name)
 
-        # 1. Dominio
         for t in old.user_types:
             new._add_user_type(t)
 
         for f in old.fluents:
             new.add_fluent(f)
 
-        # 2. Objetos
         for obj in (old.all_objects if objects is None else [o for o in old.all_objects if o not in objects]):
             new.add_object(obj)
 
-
-        #unir lista predicado y funciones
         fluents = []
         if predicates:
             fluents += predicates
         if functions:
             fluents += functions
 
-        # 3. Estado inicial
-        # 3. Estado inicial
         for expr, value in old._initial_value.items():
 
             skip = False
@@ -778,8 +899,6 @@ class ProblemUPFExpert:
 
             new.set_initial_value(expr, value)
 
-
-        # 4. Goal
         if goal is not None:
             new.add_goal(goal)
         else:
@@ -831,27 +950,6 @@ class ProblemUPFExpert:
 
         return Tree(nodes=nodes)
 
-
-    # def _get_goal_pddl(self):
-
-    #     if self.problem is None:
-    #         return ""
-
-    #     if not self.problem.goals:
-    #         return ""
-
-    #     writer = PDDLWriter(self.problem)
-    #     problem_str = writer.get_problem()
-
-    #     # Extraer solo la sección (:goal ...)
-    #     start = problem_str.find("(:goal")
-    #     if start == -1:
-    #         return ""
-
-    #     goal_str = problem_str[start:]
-    #     goal_str = goal_str.split(")", 1)[0] + ")"
-
-    #     return goal_str.strip()
     def _get_goal_pddl(self):
 
         if self.problem is None:
@@ -901,9 +999,12 @@ class ProblemUPFExpert:
 
         return functions
 
-
-
-
+def from_string_param(name: str, type_: str) -> Param:
+    p = Param()
+    p.name = name
+    p.type = type_
+    p.sub_types = []
+    return p
 
 def check_equality_node(tree_a: TreeNode, tree_b: TreeNode):
     if tree_a.node_type != tree_b.node_type:
