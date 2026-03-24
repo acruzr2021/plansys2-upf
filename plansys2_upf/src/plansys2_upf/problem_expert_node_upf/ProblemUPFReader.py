@@ -178,11 +178,21 @@ class ProblemUPFExpert:
         return True
 
     def add_predicate(self, predicate):
+
+        print("request", predicate)
         if not isinstance(predicate, TreeNode):
             return False
         
         if predicate.node_type != TreeNode.PREDICATE:
             return False
+        
+        for p in predicate.parameters:
+            if p.type == "":
+                inst = self.get_instance(p.name)
+                if inst is None:
+                    print("instance not found", p.name)
+                    return False
+                p.type = inst.type
         
         fluent = self._find_matching_fluent(
             predicate.name, predicate.parameters, bool_fluent=True
@@ -228,6 +238,14 @@ class ProblemUPFExpert:
         if not isinstance(function, TreeNode):
             return False
         
+        for p in function.parameters:
+            if p.type == "":
+                inst = self.get_instance(p.name)
+                if inst is None:
+                    print("instance not found", p.name)
+                    return False
+                p.type = inst.type
+
         fluent = self._find_matching_fluent(
             function.name, function.parameters, bool_fluent=False
         )
@@ -796,6 +814,14 @@ class ProblemUPFExpert:
     def _tree_to_upf(self, node):
 
         if node.node_type == TreeNode.PREDICATE:
+            for p in node.parameters:
+                if p.type == "":
+                    inst = self.get_instance(p.name)
+                    if inst is None:
+                        print("instance not found", p.name)
+                        return False
+                    p.type = inst.type
+            p.type = inst.type
             fluent = self._find_matching_fluent(node.name, node.parameters, True)
             if fluent is None:
                 return None
@@ -806,6 +832,13 @@ class ProblemUPFExpert:
 
 
         if node.node_type == TreeNode.FUNCTION:
+            for p in node.parameters:
+                if p.type == "":
+                    inst = self.get_instance(p.name)
+                    if inst is None:
+                        print("instance not found", p.name)
+                        return False
+                    p.type = inst.type
             fluent = self._find_matching_fluent(node.name, node.parameters, False)
             if fluent is None:
                 return None

@@ -406,12 +406,23 @@ class ProblemUPFExpertNode(LifecycleNode):
         return response
     
     def add_problem_predicate_service_callback(self, request, response):
+        print('request', str(request))
         if self.problem_expert is None:
             response.success = False
             response.error_info = 'Requesting service in non-active state'
             self.get_logger().warn(response.error_info)
 
         else:
+            node = request.node
+
+            self.get_logger().info(f"Predicate received: {node.name}")
+            self.get_logger().info(f"Node type: {node.node_type}")
+            self.get_logger().info(f"Negate: {node.negate}")
+
+            for p in node.parameters:
+                self.get_logger().info(
+                    f"Param name={p.name} type={p.type} subtypes={p.sub_types}"
+                )
             self.get_logger().info(f'Adding predicate: \n{str(request.node)}')
             response.success = self.problem_expert.add_predicate(request.node)
 
@@ -428,6 +439,16 @@ class ProblemUPFExpertNode(LifecycleNode):
             self.get_logger().warn(response.error_info)
 
         else:
+            node = request.node
+
+            self.get_logger().info(f"Predicate received: {node.name}")
+            self.get_logger().info(f"Node type: {node.node_type}")
+            self.get_logger().info(f"Negate: {node.negate}")
+
+            for p in node.parameters:
+                self.get_logger().info(
+                    f"Param name={p.name} type={p.type} subtypes={p.sub_types}"
+                )
             self.get_logger().info(f'Adding function: \n{str(request.node)}')
             response.success = self.problem_expert.add_function(request.node)
 

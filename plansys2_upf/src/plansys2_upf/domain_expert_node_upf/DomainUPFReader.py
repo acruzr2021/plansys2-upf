@@ -54,8 +54,14 @@ class DomainUPFReader:
                     pddl_string = file.read()
             
             print("string")
-            self.domain_pddl = pddl_string
-            self.domain = reader.parse_problem_string(pddl_string)
+
+            self.domain_pddl = remove_empty_sections(pddl_string)
+            self.domain_pddl = remove_comments(self.domain_pddl)
+            # self.domain_pddl = sanitize_pddl(self.domain_pddl)
+
+            print(self.domain_pddl)
+            #self.domain_pddl = pddl_string
+            self.domain = reader.parse_problem_string(self.domain_pddl)
             # self.domain = reader.parse_problem(pddl_path)
             self.children_map = self._build_children_map()
             print('sale de load_pddl')
@@ -76,8 +82,11 @@ class DomainUPFReader:
             pddl_string = pddl_string
         new_dom = None
         try: 
-            
-            new_dom = reader.parse_problem_string(pddl_string)
+            pddl_clean = remove_empty_sections(pddl_string)
+            pddl_clean = remove_comments(pddl_clean)
+            # pddl_clean = sanitize_pddl(pddl_clean)
+            print(pddl_clean)
+            new_dom = reader.parse_problem_string(pddl_clean)
         except Exception as e:
             print(f"Error loading PDDL file: {e}", file=sys.stderr)
             return False
@@ -746,3 +755,51 @@ def effects_to_tree(effects, params) -> Tree:
 
     return tree
 
+def remove_empty_sections(pddl: str) -> str:
+
+    pattern = r'\(\s*:[a-zA-Z0-9_-]+(?:\s|;[^\n]*\n)*\s*\)'
+
+    def is_empty(match):
+        block = match.group(0)
+        # quitar comentarios dentro del bloque
+        block_no_comments = re.sub(r";[^\n]*", "", block)
+        # quitar el encabezado (:algo
+        inside = re.sub(r'^\(\s*:[a-zA-Z0-9_-]+', '', block_no_comments)
+        # quitar )
+        inside = inside[:-1]
+        return inside.strip() == ""
+
+    def replacer(match):
+        if is_empty(match):
+            return ""
+        return match.group(0)
+
+    return re.sub(pattern, replacer, pddl)
+
+def remove_comments(pddl: str) -> str:
+    # elimina todo desde ; hasta final de línea
+    return re.sub(r";[^\n]*", "", pddl)
+
+# def sanitize_pddl(pddl: str) -> str:
+#     """
+#     Corrige errores comunes de PDDL generados automáticamente.
+#     """
+
+#     pddl = re.sub(r";[^\n]*", "", pddl)
+
+#     pddl = re.sub(r"\(\s*at\s+start\(", "(at start (", pddl)
+#     pddl = re.sub(r"\(\s*at\s+end\(", "(at end (", pddl)
+#     pddl = re.sub(r"\(\s*over\s+all\(", "(over all (", pddl)
+
+#     pddl = re.sub(r"\bnot\(", "not (", pddl)
+#     pddl = re.sub(r"\band\(", "and (", pddl)
+#     pddl = re.sub(r"\bor\(", "or (", pddl)
+
+#     pddl = re.sub(r"start\(", "start (", pddl)
+#     pddl = re.sub(r"end\(", "end (", pddl)
+
+#     pddl = re.sub(r"[ \t]+", " ", pddl)
+
+#     pddl = re.sub(r"\n\s*\n", "\n\n", pddl)
+
+#     return pddl.strip()

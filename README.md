@@ -24,9 +24,9 @@ This repository has the purpose of enable the use of the UPF scheduler as the pl
       - [ ] domain_expert/get_domain_derived_predicates
       - [ ] domain_expert/get_domain_derived_predicate_details
       - [x] domain_expert/get_domain
-    - [ ] Tests
-- [ ] Problem Expert x UPF
-    - [ ] Services
+    - [x] Tests
+- [x] Problem Expert x UPF
+    - [x] Services
       - [x] problem_expert/add_problem
       - [x] problem_expert/add_problem_goal
       - [x] problem_expert/add_problem_instance
@@ -43,19 +43,20 @@ This repository has the purpose of enable the use of the UPF scheduler as the pl
       - [x] problem_expert/is_problem_goal_satisfied
       - [x] problem_expert/remove_problem_goal
       - [x] problem_expert/clear_problem_knowledge
-      - [ ] problem_expert/remove_problem_instance
-      - [ ] problem_expert/remove_problem_predicate
-      - [ ] problem_expert/remove_problem_function
+      - [x] problem_expert/remove_problem_instance
+      - [x] problem_expert/remove_problem_predicate
+      - [x] problem_expert/remove_problem_function
       - [x] problem_expert/exist_problem_predicate
       - [x] problem_expert/exist_problem_function
-      - [ ] problem_expert/update_problem_function
-    - [ ] Publishers
+      - [x] problem_expert/update_problem_function
+    - [x] Publishers
       - [x] problem_expert/knowledge
-    - [ ] Test
+    - [x] Test
 - [ ] Planner x UPF
-    - [ ] .
-    - [ ] .
-    - [ ] .
+    - [ ] Services
+      - [ ] planner/get_plan
+      - [ ] planner/validate_domain
+    - [ ] Tests
 - [ ] UPFReader
     - [ ] .
     - [ ] .
