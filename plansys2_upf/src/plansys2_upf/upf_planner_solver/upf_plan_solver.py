@@ -1,33 +1,38 @@
 import os
 import tempfile
-import traceback
-from pathlib import Path 
+from pathlib import Path
 from typing import Optional
 
 import unified_planning
-from unified_planning.io import PDDLReader, PDDLWriter
-from unified_planning.shortcuts import OneshotPlanner, Compiler
-from unified_planning.shortcuts import get_environment
+from unified_planning.io import PDDLReader
+from unified_planning.shortcuts import OneshotPlanner, get_environment
 from unified_planning.engines.results import POSITIVE_OUTCOMES
-import sys
 from plansys2_msgs.msg import Plan, PlanItem
 
 from rclpy.lifecycle import LifecycleNode
 from rclpy.duration import Duration
 
 from .popf_engine import register_popf
+import re
 
 
 class UPFPlanSolver:
 
     def __init__(self):
-
+        """
+        Solver plugin that bridges the ROS 2 planning service and UPF.
+        Reads its configuration from ROS 2 parameters prefixed with the plugin name.
+        preferred_planner controls whether to auto-select the best engine or use a specific one.
+        """
         self.argument_parameter_name = None
         self.output_dir_parameter_name = None
         self.lc_node = None
 
     def create_folders(self, node_namespace: str) -> Optional[Path]:
-
+        """
+        Resolves the output directory from the output_dir parameter and creates it if needed.
+        Expands ~ to the HOME environment variable. Returns the Path or None on error.
+        """
         output_dir = self.lc_node.get_parameter(
             self.output_dir_parameter_name
         ).value
@@ -67,9 +72,11 @@ class UPFPlanSolver:
         return output_path
 
     def configure(self, lc_node: LifecycleNode, plugin_name: str):
-        
-        print("llega al configure de upf")
-
+        """
+        Called by PlannerUPFNode during on_configure. Stores the node reference and reads
+        the preferred_planner parameter (<plugin_name>.preferred_planner).
+        'default' enables auto-selection; any other value names a specific UPF engine.
+        """
         self.lc_node = lc_node
 
         self.argument_parameter_name = plugin_name + ".arguments"
@@ -79,11 +86,6 @@ class UPFPlanSolver:
         self.lc_node.declare_parameter(
             self.output_dir_parameter_name,
             tempfile.gettempdir()
-        )
-
-        self.lc_node.declare_parameter(
-            self.preferred_planner_param,
-            "default"
         )
 
         self.preferred_planner = self.lc_node.get_parameter(
@@ -105,139 +107,111 @@ class UPFPlanSolver:
         node_namespace: str,
         timeout: Duration
     ):
-
+        """
+        Main planning method. Writes domain and problem to /tmp, patches the domain name to
+        match the problem's (:domain) declaration, parses with PDDLReader, then runs the planner.
+        In 'default' mode: tries all compatible engines, returns the plan with lowest makespan.
+        In specific mode: uses the named engine directly.
+        Returns a PlanSys2 Plan message, or None if no solution is found.
+        """
         try:
-
-            print("Python executable:", sys.executable)
-            print(unified_planning.__version__)
-            print("Available engines:", get_environment().factory.engines)
-            reader = PDDLReader()
-            self.lc_node.get_logger().info(
-                "PDDL reader created"
-            )
-
-            self.lc_node.get_logger().info(
-                f"domain string {domain}"
-            )
-
-            self.lc_node.get_logger().info(
-                f"problem string {problem}"
-            )
-
             tmp_dir = Path("/tmp")
 
             domain_file = tmp_dir / "test_domain_ros.pddl"
             problem_file = tmp_dir / "test_problem_ros.pddl"
 
-            # guardar archivos
             domain_file.write_text(domain)
             problem_file.write_text(problem)
+
+            problem_content = problem_file.read_text()
+            problem_domain_match = re.search(r'\(:domain\s+([\w-]+)\)', problem_content)
+            if problem_domain_match:
+                problem_domain_name = problem_domain_match.group(1)
+                domain_content = domain_file.read_text()
+                domain_content = re.sub(
+                    r'\(define\s+\(domain\s+[\w-]+\)',
+                    f'(define (domain {problem_domain_name})',
+                    domain_content
+                )
+                domain_file.write_text(domain_content)
 
             self.lc_node.get_logger().info(f"Domain saved to {domain_file}")
             self.lc_node.get_logger().info(f"Problem saved to {problem_file}")
 
             reader = PDDLReader()
 
-            # leer desde archivo (como tu script que funciona)
             upf_problem = reader.parse_problem(
                 str(domain_file),
                 str(problem_file)
             )
 
-            upf_problem = clean_problem(upf_problem)
-            print(upf_problem)
-            reader2 = PDDLWriter(upf_problem)
-            self.lc_node.get_logger().info(f"{reader2.get_problem()}")
-            self.lc_node.get_logger().info(f"{reader2.get_domain()}")
-
-
-            print('sale del parse')
-
-            # upf_problem = reader.parse_problem_string(domain, problem)
-
-            self.lc_node.get_logger().info(
-                "PDDL parsed successfully"
-            )
-
-            self.lc_node.get_logger().info(
-                f"Engines disponibles: {get_environment().factory.engines}"
-            )
+            self.lc_node.get_logger().info("PDDL parsed successfully")
 
             if self.preferred_planner == "default":
+                env = get_environment()
+                candidates = []
 
-                print("Using default planner")
+                for name in env.factory.engines:
+                    try:
+                        with OneshotPlanner(name=name) as planner:
+                            if planner.supports(upf_problem.kind):
+                                self.lc_node.get_logger().info(f"Compatible planner: {name}")
+                                result = planner.solve(upf_problem)
+                                if result.status in POSITIVE_OUTCOMES and result.plan is not None:
+                                    self.lc_node.get_logger().info(f"Plan found by: {name}")
+                                    candidates.append((name, result.plan))
+                                else:
+                                    self.lc_node.get_logger().info(f"No plan from: {name}")
+                            else:
+                                self.lc_node.get_logger().info(f"Incompatible planner: {name}")
+                    except Exception as e:
+                        self.lc_node.get_logger().info(f"Exception with planner {name}: {e}")
 
-                with Compiler(problem_kind=upf_problem.kind) as compiler:
-                    compiled_problem = compiler.compile(upf_problem).problem
-                    with OneshotPlanner(problem_kind=compiled_problem.kind) as planner:
-                        result = planner.solve(compiled_problem)
+                if not candidates:
+                    self.lc_node.get_logger().error("No planner found a solution")
+                    return None
 
-                        if result.status in unified_planning.engines.results.POSITIVE_OUTCOMES:
-                            plan = result.plan
-                            self.lc_node.get_logger().info(
-                                f"Plan found: {plan}"
+                def plan_makespan(plan):
+                    try:
+                        return float(plan.makespan)
+                    except Exception:
+                        try:
+                            return max(
+                                float(start) + float(duration)
+                                for start, _, duration in plan.timed_actions
                             )
-                            plan = self._calculate_plan(result.plan)
-                            return plan
+                        except Exception:
+                            try:
+                                return float(len(plan.actions))
+                            except Exception:
+                                return float("inf")
 
-                        else:
-                            self.lc_node.get_logger().error(
-                                f"Planner failed with status: {result.status}"
-                            )
-    
+                best_name, best_plan = min(candidates, key=lambda x: plan_makespan(x[1]))
+                self.lc_node.get_logger().info(f"Selected planner: {best_name}")
+                self.lc_node.get_logger().info(f"Makespan: {plan_makespan(best_plan)}")
+
+                return self._calculate_plan(best_plan)
+
             else:
-                self.lc_node.get_logger().info(
-                    "Using preferred planner"
-                )
+                self.lc_node.get_logger().info("Using preferred planner")
 
                 with OneshotPlanner(name=self.preferred_planner) as planner:
                     result = planner.solve(upf_problem)
 
                     if result.status in unified_planning.engines.results.POSITIVE_OUTCOMES:
-                        plan = self._calculate_plan(result.plan)
-                        return plan
-                        #return str(result.plan)
-
+                        return self._calculate_plan(result.plan)
                     else:
                         self.lc_node.get_logger().error(
                             f"Planner failed with status: {result.status}"
                         )
                         return None
+
         except Exception as e:
-            
-            self.lc_node.get_logger().error(
-                f"UPF planning error: {e}"
-            )
-
-        ## ------ decidir como hacer para no contaminar el entorno de popf----------
-        # try:
-        #     self.lc_node.get_logger().info(
-        #         "Trying POPF planner"
-        #     )
-
-        #     from .popf_engine import register_popf
-        #     register_popf()
-
-        #     with OneshotPlanner(name="popf") as planner:
-        #         result = planner.solve(upf_problem)
-
-        #         if result.status in unified_planning.engines.results.POSITIVE_OUTCOMES:
-        #             return str(result.plan)
-
-        # except Exception as e:
-
-        #     self.lc_node.get_logger().error(
-        #         f"UPF planning error: {e}"
-        #     )
-
-            #traceback.print_exc()
-
-        ##-------------------------------------------------------------------------------
-
+            self.lc_node.get_logger().error(f"UPF planning error: {e}")
             return None
 
     def is_domain_valid(self, domain: str, node_namespace: str):
-
+        """Tries to parse the domain string with PDDLReader. Returns True if it succeeds."""
         try:
 
             reader = PDDLReader()
@@ -255,29 +229,44 @@ class UPFPlanSolver:
             return False
         
     def _calculate_plan(self, plan):
-
+        """
+        Converts a UPF plan to a PlanSys2 Plan message.
+        TimeTriggeredPlan: copies real start times and durations.
+        SequentialPlan: assigns incremental integer times (0, 1, 2...) and duration 1.0.
+        """
         ros_plan = Plan()
 
-        for start, action_instance, duration in plan.timed_actions:
+        # Plan temporal (TimeTriggeredPlan)
+        if hasattr(plan, 'timed_actions'):
+            for start, action_instance, duration in plan.timed_actions:
+                item = PlanItem()
+                item.time = float(start) if start is not None else 0.0
+                item.duration = float(duration) if duration is not None else 0.0
+                name = action_instance.action.name
+                params = [str(p) for p in action_instance.actual_parameters]
+                item.action = f"({name} {' '.join(params)})"
+                ros_plan.items.append(item)
 
-            item = PlanItem()
-
-            item.time = float(start)
-            item.duration = float(duration)
-
-            name = action_instance.action.name
-            params = [str(p) for p in action_instance.actual_parameters]
-
-            item.action = f"({name} {' '.join(params)})"
-
-            ros_plan.items.append(item)
+        # Plan secuencial (SequentialPlan)
+        elif hasattr(plan, 'actions'):
+            for i, action_instance in enumerate(plan.actions):
+                item = PlanItem()
+                item.time = float(i)
+                item.duration = 1.0
+                name = action_instance.action.name
+                params = [str(p) for p in action_instance.actual_parameters]
+                item.action = f"({name} {' '.join(params)})"
+                ros_plan.items.append(item)
 
         return ros_plan
     
 def clean_problem(problem):
-
-    from unified_planning.model import Fluent
-
+    """
+    Removes unused numeric fluents from the problem's initial state.
+    A fluent is considered unused if it doesn't appear in any action condition,
+    effect, duration expression, goal, or initial value expression.
+    Modifies the problem in place and returns it.
+    """
     used_fluents = set()
 
     def extract_from_expression(expr):
@@ -320,9 +309,6 @@ def clean_problem(problem):
 
     if not unused_numeric:
         return problem
-
-    for f in unused_numeric:
-        print(f"  - {f}")
 
     to_delete = []
     for fexp in problem.initial_values:

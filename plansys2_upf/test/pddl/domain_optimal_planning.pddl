@@ -1,0 +1,25 @@
+(define (domain logistics)
+  (:requirements :strips :typing)
+  (:types package location vehicle)
+  (:predicates
+    (at ?x - package ?l - location)
+    (vehicle-at ?v - vehicle ?l - location)
+    (in ?x - package ?v - vehicle)
+    (connected ?l1 ?l2 - location)
+  )
+  (:action load
+    :parameters (?p - package ?v - vehicle ?l - location)
+    :precondition (and (at ?p ?l) (vehicle-at ?v ?l))
+    :effect (and (in ?p ?v) (not (at ?p ?l)))
+  )
+  (:action unload
+    :parameters (?p - package ?v - vehicle ?l - location)
+    :precondition (and (in ?p ?v) (vehicle-at ?v ?l))
+    :effect (and (at ?p ?l) (not (in ?p ?v)))
+  )
+  (:action drive
+    :parameters (?v - vehicle ?from ?to - location)
+    :precondition (and (vehicle-at ?v ?from) (connected ?from ?to))
+    :effect (and (vehicle-at ?v ?to) (not (vehicle-at ?v ?from)))
+  )
+)

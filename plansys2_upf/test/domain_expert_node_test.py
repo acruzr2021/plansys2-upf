@@ -117,9 +117,13 @@ def test_domain_expert_lifecycle(rclpy_init):
         expected_states=(State.PRIMARY_STATE_ACTIVE,)
     )
     assert state == State.PRIMARY_STATE_ACTIVE
-
+    domain_node.destroy_node()
+    helper_node.destroy_node()
     stop_flag.set()
     thread.join()
+
+
+
 
 
 def test_domain_expert_lifecycle_error(rclpy_init):
@@ -156,6 +160,11 @@ def test_domain_expert_lifecycle_error(rclpy_init):
         expected_states=(State.PRIMARY_STATE_UNCONFIGURED,)
     )
     assert state == State.PRIMARY_STATE_UNCONFIGURED
-
+    domain_node.destroy_node()
+    helper_node.destroy_node()
     stop_flag.set()
     thread.join()
+
+
+
+

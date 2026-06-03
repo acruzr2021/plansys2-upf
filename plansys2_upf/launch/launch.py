@@ -23,7 +23,10 @@ def generate_launch_description():
 
     declare_model_file_cmd = DeclareLaunchArgument(
         'model_file',
-        default_value='/home/alba/Documents/ws_tfg/src/ros2_planning_system/plansys2_popf_plan_solver/test/pddl/domain_simple.pddl',
+        default_value=os.path.join(
+            get_package_share_directory('plansys2_domain_expert'),
+            'pddl', 'domain_simple.pddl'
+        ),
         description='PDDL Model file'
     )
 
@@ -69,6 +72,7 @@ def generate_launch_description():
     planner_cmd = Node(
         package=package_name,
         executable='planner_upf_node',
+        #prefix=f"bash -c 'source {os.environ['HOME']}/.pixi/envs/default/bin/activate && exec $0 $@'",
         name='planner',
         namespace=namespace,
         output='screen',
@@ -81,6 +85,42 @@ def generate_launch_description():
         ]
     )
 
+    executor_cmd = Node(
+        package='plansys2_executor',
+        executable='executor_node',
+        name='executor',
+        namespace=namespace,
+        output='screen',
+        parameters=[{
+            'default_action_bt_xml_filename': os.path.join(
+                get_package_share_directory('plansys2_executor'),
+                'behavior_trees', 'plansys2_action_bt.xml'),
+            'default_start_action_bt_xml_filename': os.path.join(
+                get_package_share_directory('plansys2_executor'),
+                'behavior_trees', 'plansys2_start_action_bt.xml'),
+            'default_end_action_bt_xml_filename': os.path.join(
+                get_package_share_directory('plansys2_executor'),
+                'behavior_trees', 'plansys2_end_action_bt.xml'),
+            'bt_builder_plugin': 'STNBTBuilder'
+        }]
+    )
+
+    lifecycle_manager_cmd = Node(
+        package='plansys2_lifecycle_manager',
+        executable='lifecycle_manager_node',
+        name='lifecycle_manager',
+        output='screen',
+        parameters=[{
+            'node_names': [
+                'domain_expert',
+                'problem_expert',
+                'planner',
+                'executor'
+            ]
+        }]
+    )
+
+
     ld = LaunchDescription()
 
     ld.add_action(declare_model_file_cmd)
@@ -90,5 +130,7 @@ def generate_launch_description():
     ld.add_action(domain_expert_cmd)
     ld.add_action(problem_expert_cmd)
     ld.add_action(planner_cmd)
+    ld.add_action(executor_cmd)
+    ld.add_action(lifecycle_manager_cmd)
 
     return ld

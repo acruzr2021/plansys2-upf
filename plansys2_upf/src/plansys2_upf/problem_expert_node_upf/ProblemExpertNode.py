@@ -1,46 +1,36 @@
 import rclpy
 import rclpy.lifecycle
-from rclpy.node import Node
-import os
-from rclpy.lifecycle import LifecycleNode, TransitionCallbackReturn
-from rclpy.lifecycle import LifecyclePublisher
-from std_msgs.msg import String
-from plansys2_msgs.msg import Node as TreeNode
-from unified_planning.io import PDDLReader
-from unified_planning.shortcuts import *
-from rclpy.callback_groups import MutuallyExclusiveCallbackGroup, ReentrantCallbackGroup
-from rclpy.lifecycle import TransitionCallbackReturn
 import traceback
+from rclpy.lifecycle import LifecycleNode, TransitionCallbackReturn
+from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
 from plansys2_msgs.srv import (
-    AddProblem, 
-    AddProblemGoal, 
-    AffectParam, 
-    AffectNode, 
-    GetProblemGoal, 
-    GetProblemInstanceDetails, 
-    GetProblemInstances, 
-    GetNodeDetails, 
-    GetStates, 
-    GetProblem, 
-    IsProblemGoalSatisfied, 
-    RemoveProblemGoal, 
-    ClearProblemKnowledge, 
-    AffectParam, 
-    AffectNode, 
-    ExistNode, 
+    AddProblem,
+    AddProblemGoal,
+    AffectParam,
+    AffectNode,
+    GetProblemGoal,
+    GetProblemInstanceDetails,
+    GetProblemInstances,
+    GetNodeDetails,
+    GetStates,
+    GetProblem,
+    IsProblemGoalSatisfied,
+    RemoveProblemGoal,
+    ClearProblemKnowledge,
+    ExistNode,
     ValidateDomain
 )
-
 from plansys2_msgs.msg import Knowledge
+from plansys2_msgs.msg import Node as TreeNode
 from std_msgs.msg import Empty
 from rclpy.qos import QoSProfile
 from plansys2_upf.problem_expert_node_upf.ProblemUPFReader import ProblemUPFExpert
-from plansys2_upf.domain_expert_node_upf.DomainExpertNode import DomainUPFExpertNode
 from plansys2_upf.domain_expert_node_upf.DomainUPFReader import DomainUPFReader
 
 
 class ProblemUPFExpertNode(LifecycleNode):
     def __init__(self):
+        """Lifecycle node that exposes ProblemUPFExpert as ROS 2 services."""
         super().__init__('problem_expert')
 
         # Declaración de parámetros
@@ -50,7 +40,8 @@ class ProblemUPFExpertNode(LifecycleNode):
         self.domain_expert = DomainUPFReader(self.get_logger())
         self.problem_expert = None 
 
-        self.validate_problem_callback_group = ReentrantCallbackGroup()
+        #self.validate_problem_callback_group = ReentrantCallbackGroup()
+        self.validate_problem_callback_group = MutuallyExclusiveCallbackGroup()
 
         # Services
         self.add_problem_service = self.create_service(
@@ -223,62 +214,15 @@ class ProblemUPFExpertNode(LifecycleNode):
             )
         )
 
-    # def on_configure(self, state):
-    #     self.get_logger().info(">>> ENTERING on_configure() <<<")
-
-    #     try:
-    #         model_file = self.get_parameter('model_file').value
-
-    #         if not model_file:
-    #             self.get_logger().error(
-    #                 "Parameter 'model_file' is not set. Please provide PDDL domain file(s)."
-    #             )
-    #             return TransitionCallbackReturn.FAILURE
-
-    #         model_paths = model_file.split(":")
-
-    #         if not model_paths or model_paths[0] == "":
-    #             self.get_logger().error("No model file specified")
-    #             return TransitionCallbackReturn.ERROR
-
-    #         ok = self.domain_expert.load_pddl(model_paths[0])
-    #         if not ok:
-    #             self.get_logger().error(f"Failed to load domain: {model_paths[0]}")
-    #             return TransitionCallbackReturn.ERROR
-
-    #         self.get_logger().info("Domain loaded successfully")
-
-    #         self.problem_expert = ProblemUPFExpert(self.domain_expert)
-
-    #         problem_file = self.get_parameter('problem_file').value
-
-    #         if problem_file:
-    #             with open(problem_file, 'r') as f:
-    #                 problem_str = f.read()
-
-    #             ok = self.problem_expert.add_problem(problem_str)
-    #             if not ok:
-    #                 self.get_logger().error("Failed to load problem")
-    #                 return TransitionCallbackReturn.ERROR
-
-    #         self.get_logger().info(f"[{self.get_name()}] Configured")
-    #         return TransitionCallbackReturn.SUCCESS
-
-    #     except Exception as e:
-    #         self.get_logger().error(f"CONFIGURE ERROR: {e}")
-    #         self.get_logger().error(traceback.format_exc())
-    #         return TransitionCallbackReturn.ERROR
-
     def on_configure(self, state):
+        """Loads the domain and optionally an initial problem file. Creates the ProblemUPFExpert instance."""
         self.get_logger().info(f"[{self.get_name()}] Configuring...")
 
         try:
             model_file = self.get_parameter("model_file").value
 
             if not model_file:
-                self.get_logger().error(
-                    "Parameter 'model_file' is not set."
-                )
+                self.get_logger().error("Parameter 'model_file' is not set.")
                 return TransitionCallbackReturn.FAILURE
 
             model_paths = model_file.split(":")
@@ -287,21 +231,14 @@ class ProblemUPFExpertNode(LifecycleNode):
                 self.get_logger().error("No model file specified")
                 return TransitionCallbackReturn.ERROR
 
-            ok = self.domain_expert.load_pddl(model_paths[0])
-            if not ok:
-                self.get_logger().error(
-                    f"Failed to load domain: {model_paths[0]}"
-                )
+            if not self.domain_expert.load_pddl(model_paths[0]):
+                self.get_logger().error(f"Failed to load domain: {model_paths[0]}")
                 return TransitionCallbackReturn.ERROR
 
             for extra_model in model_paths[1:]:
-                if extra_model:
-                    ok = self.domain_expert.extend_pddl(extra_model)
-                    if not ok:
-                        self.get_logger().error(
-                            f"Failed to extend domain: {extra_model}"
-                        )
-                        return TransitionCallbackReturn.ERROR
+                if extra_model and not self.domain_expert.extend_pddl(extra_model):
+                    self.get_logger().error(f"Failed to extend domain: {extra_model}")
+                    return TransitionCallbackReturn.ERROR
 
             self.problem_expert = ProblemUPFExpert(self.domain_expert)
 
@@ -310,16 +247,12 @@ class ProblemUPFExpertNode(LifecycleNode):
             if problem_file:
                 with open(problem_file, "r") as f:
                     problem_str = f.read()
-
-                ok = self.problem_expert.add_problem(problem_str)
-                if not ok:
+                if not self.problem_expert.add_problem(problem_str):
                     self.get_logger().error("Failed to load problem")
                     return TransitionCallbackReturn.ERROR
             else:
                 self.get_logger().warn("No problem file specified")
-                ok = self.problem_expert.add_problem()
-
-                if not ok:
+                if not self.problem_expert.add_problem():
                     self.get_logger().error("Failed to create empty problem")
                     return TransitionCallbackReturn.ERROR
 
@@ -479,7 +412,7 @@ class ProblemUPFExpertNode(LifecycleNode):
             self.get_logger().warn(response.error_info)
             return response
         
-        response.instance = self.problem_expert.get_instance(request.instance_name)
+        response.instance = self.problem_expert.get_instance(request.instance)
         
         if response.instance is None:
             response.success = False
@@ -703,6 +636,7 @@ class ProblemUPFExpertNode(LifecycleNode):
 #------------------PUBLISHERS-------------------------
 
     def get_knowledge_as_msg(self):
+        """Builds a Knowledge message with the current instances, predicates (PDDL strings), functions and goal."""
         ret_msg = Knowledge()
 
         print('-----instances------')

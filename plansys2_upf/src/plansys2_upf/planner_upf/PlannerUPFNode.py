@@ -22,25 +22,45 @@ import importlib
 class PlannerUPFNode(LifecycleNode):
 
     def __init__(self):
-
-        super().__init__('planner')
+        """
+        Initializes the planner node. Solver instances are created in on_configure,
+        not here, so the node can be reconfigured without restarting.
+        self.solvers: {solver_id: solver_instance} populated during configure.
+        """
+        super().__init__('planner',
+                        allow_undeclared_parameters=True,
+                        automatically_declare_parameters_from_overrides=True)
 
         self.solvers = {}
 
         # parámetros por defecto
-        self.declare_parameter('plan_solver_plugins', ['UPF'])
-        self.declare_parameter('plan_solver_timeout', 15.0)
-
+        # self.declare_parameter('plan_solver_plugins', ['UPF'])
+        # self.declare_parameter('plan_solver_timeout', 15.0)
     def on_configure(self, state):
-
+        """
+        Reads plan_solver_plugins and plan_solver_timeout parameters, then instantiates
+        each solver dynamically via _create_instance and calls solver.configure().
+        Registers get_plan and validate_domain services.
+        Returns FAILURE if any solver fails to load.
+        """
         self.get_logger().info(f"[{self.get_name()}] Configuring...")
 
-        self.solver_ids = self.get_parameter(
-            "plan_solver_plugins"
+        self.solver_ids = self.get_parameter_or(
+            "plan_solver_plugins",
+            rclpy.parameter.Parameter(
+                "plan_solver_plugins",
+                rclpy.Parameter.Type.STRING_ARRAY,
+                ["UPF"]
+            )
         ).value
 
-        timeout = self.get_parameter(
-            "plan_solver_timeout"
+        timeout = self.get_parameter_or(
+            "plan_solver_timeout",
+            rclpy.parameter.Parameter(
+                "plan_solver_timeout",
+                rclpy.Parameter.Type.DOUBLE,
+                40.0
+            )
         ).value
 
         self.solver_timeout = Duration(seconds=float(timeout))
@@ -48,13 +68,19 @@ class PlannerUPFNode(LifecycleNode):
         for solver_id in self.solver_ids:
 
             try:
+                param_name = f"{solver_id}.plugin"
 
-                param_name = solver_id + ".plugin"
+                solver_type = self.get_parameter_or(
+                    param_name,
+                    rclpy.parameter.Parameter(
+                        param_name,
+                        rclpy.Parameter.Type.STRING,
+                        ""
+                    )
+                ).value
 
-                if not self.has_parameter(param_name):
-                    self.declare_parameter(param_name, "")
-
-                solver_type = self.get_parameter(param_name).value
+                if solver_type == "":
+                    raise RuntimeError(f"Plugin type not specified for {solver_id}")
 
                 solver = self._create_instance(solver_type)
 
@@ -103,49 +129,40 @@ class PlannerUPFNode(LifecycleNode):
         module = importlib.import_module(module_name)
 
         print(module)
-
-
-        cls = getattr(module, class_name)
         
+        cls = getattr(module, class_name)
         print(cls)
-
-
         return cls()
 
 
     def on_activate(self, state):
-
         self.get_logger().info(f"[{self.get_name()}] Activated")
-
         return TransitionCallbackReturn.SUCCESS
 
 
     def get_plan_service_callback(self, request, response):
-
         solver = next(iter(self.solvers.values()))
-
         plan = solver.get_plan(
             request.domain,
             request.problem,
             self.get_namespace(),
             self.solver_timeout
         )
-
         if plan is not None:
-
             response.success = True
             response.plan = plan
-
         else:
-
             response.success = False
             response.error_info = "Plan not found"
-
         return response
 
-
     def validate_domain_service_callback(self, request, response):
-
-        response.success = True
-
+        if not self.solvers:
+            response.success = False
+            response.error_info = "No solver configured"
+            return response
+        solver = next(iter(self.solvers.values()))
+        response.success = solver.is_domain_valid(request.domain, self.get_namespace())
+        if not response.success:
+            response.error_info = "Invalid domain"
         return response
